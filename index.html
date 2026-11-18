@@ -148,6 +148,9 @@ td input[type=text]{min-width:140px;padding:6px 8px}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="sb-adapter.js"></script>
 <script>
 const DIVS = ['스마트시스템공학부','AI·SW융합학부','경영·휴먼라이프학부','예술·건강학부'];
 const AREAS = [
@@ -198,7 +201,9 @@ window.addEventListener('hashchange', setView);
 
 function render(){
   const app = $('#app');
-  if (S.failed){ app.innerHTML = '<div class="empty">이 화면에서는 심사 저장소에 연결할 수 없습니다. 공유받은 계정으로 로그인한 뒤 다시 열어 주세요.</div>'; return; }
+  if (S.failed){ app.innerHTML = '<div class="empty">' + (window.SB && !SB.configured
+      ? '저장소 설정이 비어 있습니다. config.js에 Supabase 주소(url)와 anon key를 넣어 주세요.'
+      : '심사 저장소에 연결할 수 없습니다. 인터넷 연결을 확인하고 새로 고침해 주세요.') + '</div>'; return; }
   if (!(S.loaded.config && S.loaded.teams && S.loaded.scores)){ app.innerHTML = '<div class="empty">' + (S.loaded.config && S.loaded.teams ? '제출된 점수를 불러오는 중입니다…' : '심사 명단을 불러오는 중입니다…') + '</div>'; return; }
   if (S.view==='results') return renderResults(app);
   if (S.view==='setup') return renderSetup(app);
@@ -208,6 +213,8 @@ function render(){
 /* ---------- judge view ---------- */
 function renderJudge(app){
   const locked = S.config && S.config.locked;
+  /* Supabase: 로그인 전에는 명단을 받지 않으므로 바로 로그인 화면 */
+  if (window.SB && SB.mode === 'anon') return renderPicker(app);
   if (!judges().length || !Object.keys(S.teams).length){
     app.innerHTML = '<div class="panel empty">심사위원과 부스 명단이 아직 등록되지 않았습니다.' + (S.canEdit ? ' <a href="#setup">설정</a>에서 등록하세요.' : ' 운영본부에 문의하세요.') + '</div>';
     return;
@@ -242,7 +249,9 @@ function renderJudge(app){
     /* 관리자 전환: 이 기기의 위원 로그인은 풀고 관리자 보기로 연다 */
     S.judgeId = id; S.adminAs = id; S.booth = null; store.set('judgeId', null); store.set('judgeAuth', null);
     toast(`${judge(id).name} 위원 자료를 관리자 보기로 엽니다`); render(); window.scrollTo(0,0); };
-  $('#switchJudge').onclick = () => { S.judgeId=null; S.adminAs=null; store.set('judgeId',null); store.set('judgeAuth',null); render(); };
+  $('#switchJudge').onclick = () => {
+    if (window.SB && !S.canEdit){ store.set('judgeId',null); SB.logout(); return; }  /* 위원: 서버 세션 종료 */
+    S.judgeId=null; S.adminAs=null; store.set('judgeId',null); store.set('judgeAuth',null); render(); };
   app.querySelectorAll('.team').forEach(b => b.onclick = () => openSheet(b.dataset.booth));
 }
 
@@ -256,7 +265,13 @@ async function authHash(jid, digits){
   const buf = await crypto.subtle.digest('SHA-256', data);
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
 }
-function authed(j){ return !!j && ((S.canEdit && S.adminAs === j.id) || (!!j.phoneHash && store.get('judgeAuth') === j.phoneHash)); }
+function authed(j){
+  if (!j) return false;
+  if (S.canEdit && S.adminAs === j.id) return true;
+  /* Supabase: 서버가 발급한 위원 세션 토큰으로 판단 */
+  if (window.SB) return SB.mode === 'judge' && SB.judgeId === j.id;
+  return !!j.phoneHash && store.get('judgeAuth') === j.phoneHash;
+}
 const AUTH = { fails:0, until:0 };
 function renderPicker(app){
   /* 실시간 갱신으로 다시 그려져도 입력 중인 성명·전화번호와 커서 위치를 유지 */
@@ -275,6 +290,14 @@ function renderPickerInner(app){
       <p id="lgMsg" role="alert" style="margin:0;color:var(--bad);font-size:14px;min-height:1.4em">${lockedOut?'입력이 여러 번 틀려 잠시 잠겼습니다. 1분 뒤 다시 시도하세요.':''}</p>
       <button class="btn primary" id="lgGo" type="submit" style="min-height:48px" ${lockedOut?'disabled':''}>로그인</button>
     </form>
+    ${window.SB && !S.canEdit ? `<details class="panel section" style="max-width:440px;margin-top:22px"><summary style="cursor:pointer;font-weight:600">관리자 로그인</summary>
+      <form id="adLogin" autocomplete="on" style="display:grid;gap:12px;margin-top:12px">
+        <div class="field"><label for="adEmail">이메일</label><input type="email" id="adEmail" autocomplete="username"></div>
+        <div class="field"><label for="adPw">비밀번호</label><input type="password" id="adPw" autocomplete="current-password"></div>
+        <p id="adMsg" role="alert" style="margin:0;color:var(--bad);font-size:14px;min-height:1.2em"></p>
+        <button class="btn primary" id="adGo" type="submit">관리자 로그인</button>
+      </form></details>` : ''}
+    ${window.SB && S.canEdit ? `<p style="margin-top:18px;color:var(--muted);font-size:14px">관리자 ${esc(SB.email||'')}로 로그인됨 · <a href="#" id="adOut">관리자 로그아웃</a></p>` : ''}
     ${S.canEdit ? `<section class="divblock" style="margin-top:28px"><h2>관리자: 심사위원 변경</h2>
       <p style="margin:0;color:var(--muted);font-size:14px">관리자 계정에서만 보입니다. 인증 없이 위원 화면을 열며, 이 창을 닫으면 풀립니다.</p>
       <div class="divgrid">
@@ -285,11 +308,24 @@ function renderPickerInner(app){
       </div></section>` : ''}`;
   if (lockedOut) setTimeout(() => { if (!S.judgeId) render(); }, AUTH.until - Date.now() + 50);
   app.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { S.judgeId=b.dataset.j; S.adminAs=b.dataset.j; store.set('judgeId',null); store.set('judgeAuth',null); render(); window.scrollTo(0,0); });
+  if ($('#adLogin')) $('#adLogin').addEventListener('submit', async e => {
+    e.preventDefault(); const m = $('#adMsg'); $('#adGo').disabled = true;
+    const r = await SB.adminLogin($('#adEmail').value.trim(), $('#adPw').value);
+    if (!r.ok){ $('#adGo').disabled = false; m.textContent = r.error; return; }
+    location.reload();
+  });
+  if ($('#adOut')) $('#adOut').onclick = e => { e.preventDefault(); SB.logout(); };
   $('#login').addEventListener('submit', async e => {
     e.preventDefault(); const msg = $('#lgMsg');
     if (Date.now() < AUTH.until) return;
     const name = normName($('#lgName').value), ph = phoneDigits($('#lgPhone').value);
     if (!name || ph.length < 10){ msg.textContent = '성명과 전화번호(숫자 10~11자리)를 모두 입력하세요.'; return; }
+    if (window.SB){
+      $('#lgGo').disabled = true; $('#lgGo').textContent = '확인 중…';
+      const r = await SB.judgeLogin(name, ph);
+      if (!r.ok){ $('#lgGo').disabled = false; $('#lgGo').textContent = '로그인'; msg.textContent = r.error || '로그인하지 못했습니다.'; return; }
+      store.set('judgeId', r.judge_id); location.reload(); return;
+    }
     if (!(window.crypto && crypto.subtle)){ msg.textContent = '이 브라우저에서는 인증을 처리할 수 없습니다. 운영본부에 문의하세요.'; return; }
     const cands = judges().filter(j => normName(j.name) === name);
     let hit = null;
@@ -405,7 +441,8 @@ async function saveScore(j, t){
   btn.disabled = true; btn.textContent = '저장 중…';
   const items = d.absent ? Array(10).fill(ABSENT_SCORE) : d.items.map(Number);
   const body = { judgeId:j.id, judgeName:j.name, booth:t.booth, division:t.division, items, total: sumItems(items), absent:d.absent, memo:(d.memo||'').slice(0,300), updatedAt:new Date().toISOString(), by:S.uid||null,
-    rev: Date.now().toString(36) + Math.random().toString(36).slice(2, 10) };
+    rev: Date.now().toString(36) + Math.random().toString(36).slice(2, 10),
+    baseRev: cur ? (cur.rev || 0) : 0 };  /* Supabase: 서버가 이 값으로 동시 저장을 한 번 더 검사 */
   try {
     await S.db.doc('scores/' + scoreKey(j.id, t.booth)).set(body);
     S.scores[scoreKey(j.id,t.booth)] = body;
@@ -739,7 +776,7 @@ const CERT_ORDER = ['대상','금상','은상','동상','장려상'];
 function certFamily(){ const v = ($('#certFont')||{}).value; return CERT_FONTS[v] || CERT_FONTS['나눔명조']; }
 let certSealPromise = null;
 function loadCertSeal(){
-  if (!certSealPromise) certSealPromise = new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => { certSealPromise = null; rej(new Error('bg')); }; im.src = 'cert-seal.png'; });
+  if (!certSealPromise) certSealPromise = new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => { certSealPromise = null; rej(new Error('bg')); }; im.src = window.CERT_SEAL_URL || 'cert-seal.png'; });
   return certSealPromise;
 }
 /* 전체 상장 목록: 상격 순 → 학부 순 → 학부 순위 → 팀원 순. 번호는 이 순서로 고정되어 필터와 관계없이 같은 학생은 같은 번호 */
@@ -805,7 +842,8 @@ async function buildCertPdf(){
   if (!list.length){ toast('조건에 맞는 상장이 없습니다'); return; }
   const st = $('#certStatus'); const btns = document.querySelectorAll('[data-cert]'); btns.forEach(b => b.disabled = true);
   try {
-    const bg = await loadCertSeal();
+    /* 직인 이미지가 없으면(Supabase Storage에 아직 안 올림) 직인 없이 출력 */
+    const bg = await loadCertSeal().catch(() => { toast('직인 이미지를 찾지 못해 직인 없이 출력합니다'); return null; });
     if (document.fonts && document.fonts.load){ const txt = list.map(c => [c.t.work, c.name, c.t.dept, c.t.advisor, c.t.company, certTitle(c.award)].join('')).join('') + '제호상장작품명성학과참여업체:()교수0123456789-위학생은년도캡스톤디자인경진대회에서기와같은으로우수한적을거두었므로이수여합니다월일명지전문총';
       try { await Promise.all(['400','700','800'].map(w => document.fonts.load(`${w} 40px ${certFamily()}`, txt))); } catch(e){} }
     const canvas = document.createElement('canvas'); canvas.width = CERT_W; canvas.height = CERT_H; const ctx = canvas.getContext('2d');
@@ -956,7 +994,7 @@ function renderSetup(app){
     for (let i = 0; i < js.length; i++){
       const j = js[i]; const o = {...j, name:$('#jn'+i).value.trim()||j.name, org:$('#jo'+i).value.trim()};
       const raw = $('#jp'+i).value.trim();
-      if (raw){ const ph = phoneDigits(raw); if (ph.length < 10 || ph.length > 11){ bad++; } else { o.phoneHash = await authHash(o.id, ph); setN++; } }
+      if (raw){ const ph = phoneDigits(raw); if (ph.length < 10 || ph.length > 11){ bad++; } else { if (window.SB) o.phoneNew = ph; else o.phoneHash = await authHash(o.id, ph); setN++; } }
       next.push(o);
     }
     if (bad){ toast(`전화번호 형식이 맞지 않는 칸이 ${bad}개 있습니다 (숫자 10~11자리)`); return; }
@@ -989,6 +1027,7 @@ setView();
   S.db = db; S.user = user; S.downloads = dl;
   if (!db){ S.failed = true; return render(); }
   try { S.canEdit = user ? await user.canEdit() : false; S.uid = user ? await user.id() : null; } catch(e){}
+  if (window.SB && SB.mode === 'judge' && SB.judgeId){ S.judgeId = SB.judgeId; store.set('judgeId', SB.judgeId); }
   document.querySelectorAll('#tabs a[data-view="results"],#tabs a[data-view="setup"]').forEach(a => a.hidden = !S.canEdit);
   /* 구독이 끊기면 안내 (점수 입력 중이면 화면은 그대로 두고 알림만) */
   const onErr = () => { if (!(S.loaded.config && S.loaded.teams)){ S.failed = true; render(); } else toast('저장소 연결이 끊겼습니다. 페이지를 새로 고친 뒤 제출 여부를 확인하세요'); };

@@ -1,0 +1,1003 @@
+<title>캡스톤디자인 온라인 평가시스템</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Nanum+Myeongjo:wght@400;700;800&family=Gowun+Batang:wght@400;700&family=Song+Myung&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: sticky top bar with three views (심사 입력 · 집계 · 설정); the score sheet mirrors the paper form's 4 areas x 10 items */
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --sunk:#E9EDF4; --line:#D5DCE7;
+  --fg:#152036; --muted:#5B6782; --navy:#0B2A5B; --accent:#1E5BD8; --accent-ink:#FFFFFF;
+  --t10:#0B6E4F; --t10bg:#DDF3EA; --t9:#1E5BD8; --t9bg:#E2EBFC; --t7:#8A5A00; --t7bg:#FBEFD6;
+  --ok:#0B6E4F; --okbg:#DDF3EA; --warn:#9A4B00; --warnbg:#FDEBD5; --bad:#B42318; --badbg:#FDE4E1;
+  --font:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0D1422; --surface:#151E30; --sunk:#1C2740; --line:#2A3752;
+  --fg:#E6ECF7; --muted:#9AA8C2; --navy:#9DB8F0; --accent:#5B8DEF; --accent-ink:#0D1422;
+  --t10:#5BD1A4; --t10bg:#123528; --t9:#8DB0FF; --t9bg:#1A2B52; --t7:#F2BE5C; --t7bg:#3A2C10;
+  --ok:#5BD1A4; --okbg:#123528; --warn:#F2BE5C; --warnbg:#3A2C10; --bad:#FF8A7E; --badbg:#3E1A17;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0D1422; --surface:#151E30; --sunk:#1C2740; --line:#2A3752;
+  --fg:#E6ECF7; --muted:#9AA8C2; --navy:#9DB8F0; --accent:#5B8DEF; --accent-ink:#0D1422;
+  --t10:#5BD1A4; --t10bg:#123528; --t9:#8DB0FF; --t9bg:#1A2B52; --t7:#F2BE5C; --t7bg:#3A2C10;
+  --ok:#5BD1A4; --okbg:#123528; --warn:#F2BE5C; --warnbg:#3A2C10; --bad:#FF8A7E; --badbg:#3E1A17;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.55}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.wrap{max-width:1120px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding-block:12px}
+.brand{display:flex;flex-direction:column;min-width:0}
+.brand small{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.brand b{font-size:17px;color:var(--navy);text-wrap:balance}
+nav.tabs{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+nav.tabs a{padding:8px 14px;border-radius:999px;color:var(--muted);text-decoration:none;font-weight:600;font-size:14px}
+nav.tabs a[aria-current="page"]{background:var(--navy);color:var(--surface)}
+nav.tabs a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main{padding-block:24px 64px}
+h1{font-size:22px;margin:0 0 4px;text-wrap:balance}
+h2{font-size:17px;margin:0;text-wrap:balance}
+.lead{color:var(--muted);margin:0 0 20px;max-width:65ch}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.grow{flex:1 1 auto;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.btn{font:inherit;font-weight:600;font-size:14px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:9px 16px;border-radius:8px;cursor:pointer;min-height:40px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--accent)}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.chip.ok{background:var(--okbg);color:var(--ok)}
+.chip.todo{background:var(--sunk);color:var(--muted)}
+.chip.warn{background:var(--warnbg);color:var(--warn)}
+.chip.bad{background:var(--badbg);color:var(--bad)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.banner{padding:12px 16px;border-radius:var(--r);background:var(--warnbg);color:var(--warn);font-weight:600;margin-bottom:16px}
+.empty{padding:40px 20px;text-align:center;color:var(--muted)}
+/* judge picker */
+.divgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.divcard{padding:16px;display:flex;flex-direction:column;gap:10px}
+.divcard h3{margin:0;font-size:14px;color:var(--muted);font-weight:600}
+.judgebtn{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;text-align:left}
+.judgebtn span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* team list */
+.progress{height:8px;border-radius:999px;background:var(--sunk);overflow:hidden;flex:1 1 160px;min-width:120px}
+.progress i{display:block;height:100%;background:var(--ok)}
+.teamlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:16px}
+.team{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:center;padding:12px 14px;text-align:left;width:100%;font:inherit;color:inherit;cursor:pointer}
+.team:hover{border-color:var(--accent)}
+.team .booth{font-family:var(--mono);font-weight:600;font-size:13px;background:var(--sunk);border-radius:6px;padding:4px 7px;grid-row:span 2}
+.team .t1{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.team .t2{font-size:13px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;grid-column:2}
+.team .score{grid-row:1/span 2;grid-column:3;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.team .score b{font-family:var(--mono);font-size:18px}
+/* sheet */
+.sheet-head{padding:16px 18px;display:grid;grid-template-columns:auto 1fr;gap:4px 16px;border-bottom:1px solid var(--line)}
+.sheet-head dt{color:var(--muted);font-size:13px}
+.sheet-head dd{margin:0;font-weight:600;min-width:0}
+.area{border-bottom:1px solid var(--line)}
+.area-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:12px 18px 4px;font-weight:700;color:var(--navy)}
+.area-h .num{color:var(--fg)}
+.item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px;align-items:center;padding:8px 18px}
+.item p{margin:0;font-size:14px}
+.item p small{display:block;color:var(--muted);font-size:12px}
+.scale{display:flex;gap:4px;flex-wrap:wrap}
+.scale fieldset{border:0;margin:0;padding:0;display:flex;gap:3px}
+.scale legend{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.pt{position:relative}
+.pt input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.pt span{display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:8px;font-family:var(--mono);font-weight:600;border:1px solid var(--line);background:var(--surface);color:var(--muted)}
+.pt input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.pt.t10 input:checked+span{background:var(--t10bg);color:var(--t10);border-color:var(--t10)}
+.pt.t9 input:checked+span{background:var(--t9bg);color:var(--t9);border-color:var(--t9)}
+.pt.t7 input:checked+span{background:var(--t7bg);color:var(--t7);border-color:var(--t7)}
+.scale .gap{width:6px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);padding:10px 18px;border-bottom:1px solid var(--line)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.sheet-foot{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:12px 18px calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;border-radius:0 0 var(--r) var(--r)}
+.total{display:flex;align-items:baseline;gap:6px}
+.total b{font-family:var(--mono);font-size:28px;color:var(--navy)}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:14px}
+.check input{width:18px;height:18px;margin-top:2px}
+textarea,input[type=text],select{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+.memo{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.memo label{font-size:13px;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--navy);color:var(--surface);padding:10px 18px;border-radius:999px;font-weight:600;z-index:20;max-width:calc(100% - 32px)}
+/* tables */
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+th{font-size:12px;color:var(--muted);font-weight:600;background:var(--sunk);white-space:nowrap}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+.rank1 td{background:var(--t10bg)}
+.divblock{display:flex;flex-direction:column;gap:10px;margin-bottom:28px}
+.stats{display:flex;flex-wrap:wrap;gap:8px 20px;color:var(--muted);font-size:14px}
+.stats b{color:var(--fg)}
+.formgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:13px;color:var(--muted)}
+.section{padding:18px;display:flex;flex-direction:column;gap:14px;margin-bottom:16px}
+td input[type=text]{min-width:140px;padding:6px 8px}
+@media (max-width:560px){
+  .item{grid-template-columns:1fr}
+  .pt span{width:36px;height:38px}
+  .sheet-head{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><small>명지전문대학 · 2026학년도</small><b>캡스톤디자인 경진대회 평가시스템</b></div>
+    <nav class="tabs" id="tabs" aria-label="화면">
+      <a href="#judge" data-view="judge">심사 입력</a>
+      <a href="#results" data-view="results" hidden>집계</a>
+      <a href="#setup" data-view="setup" hidden>설정</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap" id="app">
+  <div class="empty">심사 명단을 불러오는 중입니다…</div>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+const DIVS = ['스마트시스템공학부','AI·SW융합학부','경영·휴먼라이프학부','예술·건강학부'];
+const AREAS = [
+  {name:'창의성 및 기획성', max:30, items:['아이디어의 창의성(독창성) 및 진보성','기능성 및 미적감각을 융합·반영 내용의 우수성','과제 수행 프로세스의 체계성']},
+  {name:'기술성 및 완성도', max:20, items:['기초설계과정의 논리적 타당성 및 실현가능성','결과물 제작 및 조립·작동의 완성도']},
+  {name:'발표 및 팀협력', max:30, items:['학생 현장발표 및 질의응답','보고서 구성 및 작성의 충실도','팀의 협력정도 및 참여도']},
+  {name:'기대효과', max:20, items:['출품과제의 전시효과','결과물의 제품화 가능성']},
+];
+const ITEMS = AREAS.flatMap(a => a.items);
+const TIERS = [{label:'매우우수',cls:'t10',pts:[10]},{label:'우수',cls:'t9',pts:[9,8]},{label:'보통',cls:'t7',pts:[7,6,5]}];
+
+const S = { db:null, user:null, downloads:null, canEdit:false, uid:null,
+  config:null, teams:{}, scores:{}, loaded:{config:false,teams:false,scores:false},
+  view:'judge', judgeId:null, booth:null, draft:null, failed:false };
+
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = { get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }, set(k,v){ try { v==null ? localStorage.removeItem(k) : localStorage.setItem(k,v); } catch(e){} } };
+let toastT;
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,2600); }
+
+function judges(){ return (S.config && Array.isArray(S.config.judges)) ? S.config.judges : []; }
+function judge(id){ return judges().find(j => j.id === id); }
+function teamsOf(div){ return Object.values(S.teams).filter(t => t.division === div).sort((a,b)=>a.booth.localeCompare(b.booth)); }
+function scoreKey(jid, booth){ return jid + '__' + booth; }
+function scoreOf(jid, booth){ return S.scores[scoreKey(jid, booth)]; }
+function teamLabel(t){ return t.team || ('부스 ' + t.booth); }
+/* 발표 예정 시각(제안): 학부별 부스 순서, 10:00 시작, 팀당 발표 5분 + 질의 3분 + 이동 2분, 12:00~13:00 점심 */
+function slotOf(t){
+  const cfg = S.config || {}; const step = Number(cfg.slotMin) || 10;
+  const i = teamsOf(t.division).findIndex(x => x.booth === t.booth); if (i < 0) return '';
+  let m = 600 + i * step; if (m >= 720) m += 60;
+  return String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
+}
+function sumItems(items){ return items.reduce((a,b)=>a+(Number(b)||0),0); }
+
+/* ---------- views ---------- */
+function setView(){
+  const h = (location.hash || '#judge').slice(1);
+  S.view = ['judge','results','setup'].includes(h) ? h : 'judge';
+  if ((S.view==='results' || S.view==='setup') && !S.canEdit) S.view='judge';
+  document.querySelectorAll('#tabs a').forEach(a => {
+    if (a.dataset.view===S.view) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current');
+  });
+  render();
+}
+window.addEventListener('hashchange', setView);
+
+function render(){
+  const app = $('#app');
+  if (S.failed){ app.innerHTML = '<div class="empty">이 화면에서는 심사 저장소에 연결할 수 없습니다. 공유받은 계정으로 로그인한 뒤 다시 열어 주세요.</div>'; return; }
+  if (!(S.loaded.config && S.loaded.teams && S.loaded.scores)){ app.innerHTML = '<div class="empty">' + (S.loaded.config && S.loaded.teams ? '제출된 점수를 불러오는 중입니다…' : '심사 명단을 불러오는 중입니다…') + '</div>'; return; }
+  if (S.view==='results') return renderResults(app);
+  if (S.view==='setup') return renderSetup(app);
+  renderJudge(app);
+}
+
+/* ---------- judge view ---------- */
+function renderJudge(app){
+  const locked = S.config && S.config.locked;
+  if (!judges().length || !Object.keys(S.teams).length){
+    app.innerHTML = '<div class="panel empty">심사위원과 부스 명단이 아직 등록되지 않았습니다.' + (S.canEdit ? ' <a href="#setup">설정</a>에서 등록하세요.' : ' 운영본부에 문의하세요.') + '</div>';
+    return;
+  }
+  const j = judge(S.judgeId);
+  if (!j || !authed(j)) return renderPicker(app);
+  if (S.booth && S.teams[S.booth]) return renderSheet(app, j, S.teams[S.booth], locked);
+  const list = teamsOf(j.division);
+  const done = list.filter(t => scoreOf(j.id, t.booth)).length;
+  app.innerHTML = `
+    ${locked ? '<div class="banner">심사가 마감되어 점수를 고칠 수 없습니다. 입력한 점수만 확인할 수 있습니다.</div>' : ''}
+    <div class="row">
+      <div class="grow"><h1>${esc(j.name)} 위원</h1><p class="lead" style="margin:0">${esc(j.division)} · ${esc(j.org || '')}</p></div>
+      ${S.adminAs===j.id?'<span class="chip warn">관리자 보기</span>':''}<button class="btn ghost" id="switchJudge" type="button">로그아웃</button>
+    </div>
+    ${S.canEdit ? `<div class="panel row" style="margin-top:14px;padding:10px 14px;gap:10px"><label for="judgeSwitch" style="font-weight:600;white-space:nowrap">심사위원 변경 <small style="color:var(--muted);font-weight:400">(관리자)</small></label>
+      <select id="judgeSwitch" class="grow" style="max-width:420px">${DIVS.map(d => `<optgroup label="${esc(d)}">${judges().filter(x=>x.division===d).map(x => { const n = teamsOf(d).filter(t=>scoreOf(x.id,t.booth)).length; return `<option value="${esc(x.id)}" ${x.id===j.id?'selected':''}>${esc(x.name)} · ${n}/${teamsOf(d).length}팀 제출</option>`; }).join('')}</optgroup>`).join('')}</select></div>` : ''}
+    <div class="row" style="margin-top:16px">
+      <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${list.length}" aria-valuenow="${done}" aria-label="심사 진행"><i style="width:${list.length? (done/list.length*100):0}%"></i></div>
+      <span class="num"><b>${done}</b> / ${list.length}팀 완료</span>
+    </div>
+    <div class="teamlist">
+      ${list.map(t => { const s = scoreOf(j.id, t.booth); return `
+        <button type="button" class="panel team" data-booth="${esc(t.booth)}">
+          <span class="booth">${esc(t.booth)}</span>
+          <span class="t1">${esc(teamLabel(t))}</span>
+          <span class="t2"><span class="num">${slotOf(t)}</span> · ${esc(t.work || t.dept)}</span>
+          <span class="score">${s ? (s.absent ? '<span class="chip warn">미참여</span>' : `<b>${s.total}</b><span class="chip ok">제출</span>`) : '<span class="chip todo">미입력</span>'}</span>
+        </button>`; }).join('')}
+    </div>`;
+  if ($('#judgeSwitch')) $('#judgeSwitch').onchange = e => { const id = e.target.value; if (!judge(id) || id === j.id) return;
+    /* 관리자 전환: 이 기기의 위원 로그인은 풀고 관리자 보기로 연다 */
+    S.judgeId = id; S.adminAs = id; S.booth = null; store.set('judgeId', null); store.set('judgeAuth', null);
+    toast(`${judge(id).name} 위원 자료를 관리자 보기로 엽니다`); render(); window.scrollTo(0,0); };
+  $('#switchJudge').onclick = () => { S.judgeId=null; S.adminAs=null; store.set('judgeId',null); store.set('judgeAuth',null); render(); };
+  app.querySelectorAll('.team').forEach(b => b.onclick = () => openSheet(b.dataset.booth));
+}
+
+/* ---------- 위원 본인 인증: 성명 + 전화번호 ----------
+   전화번호는 저장하지 않고 SHA-256(고정 문자열|위원ID|숫자만) 값만 config에 저장해 대조한다.
+   기기에는 인증값을 기억해 두고, 관리자가 번호를 다시 등록하면 기존 기기 인증은 풀린다. */
+function phoneDigits(v){ return String(v||'').replace(/\D/g,''); }
+function normName(v){ return String(v||'').replace(/\s+/g,''); }
+async function authHash(jid, digits){
+  const data = new TextEncoder().encode('mjc-capstone-2026|' + jid + '|' + digits);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
+}
+function authed(j){ return !!j && ((S.canEdit && S.adminAs === j.id) || (!!j.phoneHash && store.get('judgeAuth') === j.phoneHash)); }
+const AUTH = { fails:0, until:0 };
+function renderPicker(app){
+  /* 실시간 갱신으로 다시 그려져도 입력 중인 성명·전화번호와 커서 위치를 유지 */
+  const keep = { n: ($('#lgName')||{}).value || '', p: ($('#lgPhone')||{}).value || '', f: document.activeElement && document.activeElement.id };
+  renderPickerInner(app);
+  if ($('#lgName') && !$('#lgName').disabled){ $('#lgName').value = keep.n; $('#lgPhone').value = keep.p; if (keep.f === 'lgName' || keep.f === 'lgPhone') $('#'+keep.f).focus(); }
+}
+function renderPickerInner(app){
+  const lockedOut = Date.now() < AUTH.until;
+  app.innerHTML = `
+    <h1>평가위원 로그인</h1>
+    <p class="lead">성명과 전화번호를 입력하세요. 인증되면 담당 학부의 부스 목록이 열리고, 이 기기에서는 로그아웃할 때까지 로그인이 유지됩니다.</p>
+    <form class="panel section" id="login" autocomplete="off" style="max-width:440px">
+      <div class="field"><label for="lgName">성명</label><input type="text" id="lgName" autocomplete="off" placeholder="예: 홍길동" ${lockedOut?'disabled':''}></div>
+      <div class="field"><label for="lgPhone">전화번호</label><input type="text" id="lgPhone" inputmode="tel" autocomplete="off" placeholder="010-0000-0000" ${lockedOut?'disabled':''}></div>
+      <p id="lgMsg" role="alert" style="margin:0;color:var(--bad);font-size:14px;min-height:1.4em">${lockedOut?'입력이 여러 번 틀려 잠시 잠겼습니다. 1분 뒤 다시 시도하세요.':''}</p>
+      <button class="btn primary" id="lgGo" type="submit" style="min-height:48px" ${lockedOut?'disabled':''}>로그인</button>
+    </form>
+    ${S.canEdit ? `<section class="divblock" style="margin-top:28px"><h2>관리자: 심사위원 변경</h2>
+      <p style="margin:0;color:var(--muted);font-size:14px">관리자 계정에서만 보입니다. 인증 없이 위원 화면을 열며, 이 창을 닫으면 풀립니다.</p>
+      <div class="divgrid">
+      ${DIVS.map(d => `<div class="panel divcard"><h3>${esc(d)} · ${teamsOf(d).length}팀</h3>
+        ${judges().filter(j=>j.division===d).map(j => { const n = teamsOf(d).filter(t=>scoreOf(j.id,t.booth)).length;
+          return `<button type="button" class="btn judgebtn" data-j="${esc(j.id)}"><span>${esc(j.name)}<small style="color:var(--muted);font-weight:400"> · ${esc(j.org||'')}</small>${j.phoneHash?'':' <span class="chip bad">번호 미등록</span>'}</span><span class="chip ${n===teamsOf(d).length&&n?'ok':'todo'} num">${n}/${teamsOf(d).length}</span></button>`; }).join('') || '<span style="color:var(--muted)">배정된 위원 없음</span>'}
+      </div>`).join('')}
+      </div></section>` : ''}`;
+  if (lockedOut) setTimeout(() => { if (!S.judgeId) render(); }, AUTH.until - Date.now() + 50);
+  app.querySelectorAll('[data-j]').forEach(b => b.onclick = () => { S.judgeId=b.dataset.j; S.adminAs=b.dataset.j; store.set('judgeId',null); store.set('judgeAuth',null); render(); window.scrollTo(0,0); });
+  $('#login').addEventListener('submit', async e => {
+    e.preventDefault(); const msg = $('#lgMsg');
+    if (Date.now() < AUTH.until) return;
+    const name = normName($('#lgName').value), ph = phoneDigits($('#lgPhone').value);
+    if (!name || ph.length < 10){ msg.textContent = '성명과 전화번호(숫자 10~11자리)를 모두 입력하세요.'; return; }
+    if (!(window.crypto && crypto.subtle)){ msg.textContent = '이 브라우저에서는 인증을 처리할 수 없습니다. 운영본부에 문의하세요.'; return; }
+    const cands = judges().filter(j => normName(j.name) === name);
+    let hit = null;
+    for (const j of cands){ if (j.phoneHash && await authHash(j.id, ph) === j.phoneHash){ hit = j; break; } }
+    if (!hit){
+      AUTH.fails++;
+      if (AUTH.fails >= 5){ AUTH.fails = 0; AUTH.until = Date.now() + 60000; return render(); }
+      msg.textContent = cands.length && !cands.some(j => j.phoneHash) ? '전화번호가 아직 등록되지 않았습니다. 운영본부에 문의하세요.' : `성명 또는 전화번호가 맞지 않습니다. (${AUTH.fails}/5)`;
+      return;
+    }
+    AUTH.fails = 0; S.judgeId = hit.id; S.adminAs = null; store.set('judgeId', hit.id); store.set('judgeAuth', hit.phoneHash);
+    toast(`${hit.name} 위원으로 로그인했습니다`); render(); window.scrollTo(0,0);
+  });
+}
+
+function openSheet(booth){
+  S.booth = booth;
+  const s = scoreOf(S.judgeId, booth);
+  /* baseAt: 이 화면을 연 시점의 저장본. 저장 직전에 다른 기기가 먼저 저장했는지 확인하는 데 씀 */
+  S.draft = s ? {items:[...s.items], absent:!!s.absent, memo:s.memo||'', confirm:false, baseAt:s.updatedAt||null, baseRev:s.rev||null, force:false}
+              : {items:Array(10).fill(null), absent:false, memo:'', confirm:false, baseAt:null, baseRev:null, force:false};
+  render(); window.scrollTo(0,0);
+}
+
+function renderSheet(app, j, t, locked){
+  const d = S.draft; const prev = scoreOf(j.id, t.booth);
+  let idx = 0;
+  const areaHtml = AREAS.map((a, ai) => {
+    const start = idx; const sub = d.items.slice(start, start + a.items.length);
+    const subTotal = sub.every(v=>v!=null) ? sumItems(sub) : '–';
+    const rows = a.items.map(name => { const i = idx++; return `
+      <div class="item">
+        <p>${i+1}. ${esc(name)}</p>
+        <div class="scale" role="radiogroup" aria-label="${i+1}번 ${esc(name)}">
+          ${TIERS.map((tier,ti) => `${ti? '<span class="gap"></span>':''}${tier.pts.map(p => `
+            <label class="pt ${tier.cls}"><input type="radio" name="i${i}" id="i${i}_${p}" value="${p}" ${(d.absent ? p===ABSENT_SCORE : d.items[i]===p)?'checked':''} ${locked||d.absent?'disabled':''}><span>${p}</span></label>`).join('')}`).join('')}
+        </div>
+      </div>`; }).join('');
+    return `<section class="area"><div class="area-h"><span>${esc(a.name)} (${a.max})</span><span class="num" data-sub="${ai}">${subTotal}</span></div>${rows}</section>`;
+  }).join('');
+  const filled = d.items.filter(v=>v!=null).length;
+  const total = d.absent ? ABSENT_SCORE * 10 : sumItems(d.items);
+  const ready = !locked && (d.absent || filled===10) && d.confirm;
+  app.innerHTML = `
+    <div class="row" style="margin-bottom:12px"><button class="btn ghost" id="back" type="button">← ${esc(j.division)} 목록</button>
+      ${prev ? `<span class="chip ok">제출됨 · ${esc(fmtTime(prev.updatedAt))}</span>` : ''}</div>
+    ${locked ? '<div class="banner">심사가 마감되어 점수를 고칠 수 없습니다.</div>' : ''}
+    <form class="panel" id="sheet" autocomplete="off">
+      <dl class="sheet-head">
+        <dt>작품명</dt><dd>${esc(t.work || '—')}</dd>
+        <dt>팀명</dt><dd>${esc(teamLabel(t))}</dd>
+        <dt>학과 · 부스</dt><dd>${esc(t.dept)} · <span class="num">${esc(t.booth)}</span></dd>
+        <dt>지도교수 · 인원</dt><dd>${esc(t.advisor || '—')} · ${esc(t.members || '—')}명 · 발표 예정 <span class="num">${slotOf(t)}</span></dd>
+        <dt>평가위원</dt><dd>${esc(j.name)} (${esc(j.org||'')})</dd>
+      </dl>
+      <div class="legend"><span><i style="background:var(--t10)"></i>매우우수 10</span><span><i style="background:var(--t9)"></i>우수 9–8</span><span><i style="background:var(--t7)"></i>보통 7–5</span><span>항목당 10점, 계 100점</span></div>
+      ${areaHtml}
+      <div class="memo">
+        <label class="check"><input type="checkbox" id="absent" ${d.absent?'checked':''} ${locked?'disabled':''}> 미참여 (팀이 부스에 없어 심사하지 못함 · 전 항목 5점, 합계 50점 자동 처리)</label>
+        <label for="memo">메모 (선택)</label>
+        <textarea id="memo" rows="2" maxlength="300" ${locked?'disabled':''} placeholder="심사 중 남길 의견">${esc(d.memo)}</textarea>
+      </div>
+      <div class="sheet-foot">
+        <div class="total"><span style="color:var(--muted)">계</span><b id="tot">${d.absent ? total : (filled ? total : '–')}</b><span style="color:var(--muted)">/ 100</span>
+          <span class="chip ${d.absent||filled===10?'ok':'todo'} num" id="cnt" style="margin-left:6px">${d.absent?'미참여':filled+'/10 항목'}</span></div>
+        <label class="check grow"><input type="checkbox" id="confirm" ${d.confirm?'checked':''} ${locked?'disabled':''}> 위 점수로 평가했음을 확인합니다 (${esc(j.name)})</label>
+        <button class="btn primary" id="save" type="submit" ${ready?'':'disabled'}>${prev?'수정 제출':'제출'}</button>
+      </div>
+    </form>`;
+  $('#back').onclick = () => { S.booth=null; render(); };
+  const form = $('#sheet');
+  form.addEventListener('change', e => {
+    const el = e.target;
+    if (el.name && el.name.startsWith('i')) d.items[Number(el.name.slice(1))] = Number(el.value);
+    if (el.id==='absent') { d.absent = el.checked; return render(); }
+    if (el.id==='confirm') d.confirm = el.checked;
+    refreshSheet();
+  });
+  $('#memo').addEventListener('input', e => d.memo = e.target.value);
+  form.addEventListener('submit', e => { e.preventDefault(); saveScore(j, t); });
+}
+
+function refreshSheet(){
+  const d = S.draft; let idx=0;
+  AREAS.forEach((a,ai) => { const sub=d.items.slice(idx, idx+a.items.length); idx+=a.items.length;
+    const el=document.querySelector(`[data-sub="${ai}"]`); if (el) el.textContent = sub.every(v=>v!=null)? sumItems(sub) : '–'; });
+  const filled = d.items.filter(v=>v!=null).length;
+  const c=$('#cnt');
+  if (d.absent){ $('#tot').textContent = ABSENT_SCORE * 10; c.textContent = '미참여'; c.className = 'chip num ok'; }
+  else { $('#tot').textContent = filled ? sumItems(d.items) : '–'; c.textContent = filled+'/10 항목'; c.className = 'chip num ' + (filled===10?'ok':'todo'); }
+  $('#save').disabled = !((d.absent || filled===10) && d.confirm) || !!(S.config && S.config.locked);
+}
+
+async function saveScore(j, t){
+  const d = S.draft; const btn = $('#save');
+  if (S.config && S.config.locked){ toast('심사가 마감되어 제출할 수 없습니다'); return render(); }
+  if (!authed(judge(j.id))){ toast('로그인이 풀렸습니다. 다시 로그인한 뒤 제출하세요'); S.booth = null; return render(); }
+  if (!d.absent && d.items.some(v => !(v >= 5 && v <= 10))){ toast('모든 항목에 점수를 선택하세요'); return; }
+  /* 동시 저장 감지: 화면을 연 뒤 다른 기기에서 같은 심사표가 저장됐으면 한 번 더 눌러야 덮어씀 */
+  /* 저장 직전에 서버의 최신 문서를 다시 읽어, 화면을 연 뒤 바뀌었는지(rev·updatedAt) 확인 */
+  btn.disabled = true; btn.textContent = '확인 중…';
+  let cur;
+  try { const snap = await S.db.doc('scores/' + scoreKey(j.id, t.booth)).get(); cur = snap.exists ? snap.data() : null; }
+  catch(e){ btn.disabled = false; btn.textContent = '다시 제출'; toast('저장소에 연결하지 못했습니다. 연결을 확인하고 다시 제출하세요'); return; }
+  btn.disabled = false; btn.textContent = d.force ? '그래도 덮어쓰기' : (scoreOf(j.id, t.booth) ? '수정 제출' : '제출');
+  const curAt = cur ? (cur.updatedAt || null) : null; const curRev = cur ? (cur.rev || null) : null;
+  if ((curAt !== d.baseAt || curRev !== d.baseRev) && !d.force){
+    d.force = true; btn.textContent = '그래도 덮어쓰기';
+    toast(cur ? `다른 기기에서 이 심사표가 ${fmtTime(curAt)}에 ${cur.absent ? '미참여로' : sumItems(cur.items||[]) + '점으로'} 먼저 저장됐습니다. 확인 후 한 번 더 누르면 덮어씁니다`
+              : '화면을 연 뒤 이 심사표가 초기화(삭제)됐습니다. 확인 후 한 번 더 누르면 새로 저장합니다');
+    return;
+  }
+  btn.disabled = true; btn.textContent = '저장 중…';
+  const items = d.absent ? Array(10).fill(ABSENT_SCORE) : d.items.map(Number);
+  const body = { judgeId:j.id, judgeName:j.name, booth:t.booth, division:t.division, items, total: sumItems(items), absent:d.absent, memo:(d.memo||'').slice(0,300), updatedAt:new Date().toISOString(), by:S.uid||null,
+    rev: Date.now().toString(36) + Math.random().toString(36).slice(2, 10) };
+  try {
+    await S.db.doc('scores/' + scoreKey(j.id, t.booth)).set(body);
+    S.scores[scoreKey(j.id,t.booth)] = body;
+    toast(`${teamLabel(t)} ${d.absent?'미참여로':body.total+'점으로'} 제출했습니다`);
+    const next = teamsOf(j.division).find(x => !scoreOf(j.id, x.booth));
+    if (next) openSheet(next.booth); else { S.booth=null; render(); }
+  } catch(e){
+    btn.disabled=false; btn.textContent='다시 제출';
+    toast(e && e.code==='invalid_argument' ? '저장 권한이 없습니다. 운영본부에 문의하세요.' : '저장하지 못했습니다. 연결을 확인하고 다시 제출하세요.');
+  }
+}
+
+function fmtTime(iso){ try { const d=new Date(iso); return d.toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}); } catch(e){ return ''; } }
+
+/* ---------- results ---------- */
+const AWARDS = ['금상','은상','동상','장려상'];
+const QUOTA_DEFAULT = {
+  '스마트시스템공학부':{금상:1,은상:2,동상:4,장려상:18},
+  'AI·SW융합학부':{금상:1,은상:1,동상:3,장려상:18},
+  '경영·휴먼라이프학부':{금상:1,은상:0,동상:2,장려상:7},
+  '예술·건강학부':{금상:1,은상:1,동상:3,장려상:17}};
+const GAP_LIMIT = 15;
+const ABSENT_SCORE = 5; /* 미참여 팀: 전 항목 5점 자동 처리 */
+const ALL_AWARDS = ['대상', ...AWARDS];
+function quotaOf(div){ const q = (S.config && S.config.quota && S.config.quota[div]) || QUOTA_DEFAULT[div] || {}; return ALL_AWARDS.reduce((o,a)=>(o[a]=Number(q[a])||0,o),{}); }
+/* 대상 정원을 학부별로 1 이상 넣으면 '지정 모드': 모든 상격을 학부별 정원대로 배정. 모두 0이면 '자동 모드': 전체 1위가 대상, 그 학부는 한 단계씩 상향 */
+function isManualTop(){ return DIVS.some(d => quotaOf(d)['대상'] > 0); }
+/* 팀 통계: 평균 합계, 동점 기준용 기술성·완성도 소계 평균(4·5번), 창의성·기획성 소계 평균(1~3번), 위원 간 점수 차 */
+function teamStat(t, js){
+  const ss = js.map(j => scoreOf(j.id, t.booth)); const got = ss.filter(Boolean);
+  if (!got.length) return {t, ss, n:0, avg:null, tech:null, creat:null, gap:null, absent:false};
+  const m = f => got.reduce((a,s)=>a+f(s),0)/got.length;
+  const totals = got.map(s=>s.total);
+  return {t, ss, n:got.length, avg:m(s=>s.total), tech:m(s=>s.items[3]+s.items[4]), creat:m(s=>s.items[0]+s.items[1]+s.items[2]),
+    gap: got.length>=2 ? Math.max(...totals)-Math.min(...totals) : null, absent: got.some(s=>s.absent),
+    /* 미참여 팀: 제출한 위원 모두가 미참여로 처리한 팀 → 순위·수상에서 제외 */
+    out: got.every(s=>s.absent)};
+}
+const near = (a,b) => Math.abs(a-b) < 1e-9;
+/* 순위 비교: 평균 → 기술성 및 완성도 소계 → 창의성 및 기획성 소계 */
+function cmpStat(a,b){ return (near(a.avg,b.avg)?0:b.avg-a.avg) || (near(a.tech,b.tech)?0:b.tech-a.tech) || (near(a.creat,b.creat)?0:b.creat-a.creat); }
+function sameStat(a,b){ return cmpStat(a,b)===0; }
+function tieReason(a,b){ return !near(a.avg,b.avg) ? '' : !near(a.tech,b.tech) ? '평균 동점 → 기술성·완성도로 결정' : !near(a.creat,b.creat) ? '평균·기술성 동점 → 창의성·기획성으로 결정' : '동점 (기준으로 가려지지 않음)'; }
+function rowsFor(div){
+  const js = judges().filter(j=>j.division===div);
+  const rows = teamsOf(div).map(t => teamStat(t, js));
+  const scored = rows.filter(r=>r.avg!=null && !r.out);
+  rows.forEach(r => { r.rank = (r.avg==null || r.out) ? null : scored.filter(x => cmpStat(x, r) < 0).length + 1;
+    const twin = scored.find(x => x!==r && near(x.avg, r.avg)); r.tieNote = twin ? tieReason(r, twin) : ''; });
+  return { js, rows };
+}
+/* 수상(안): 전체 1위 대상, 그 외 학부별 수상 현황 정원대로 금·은·동·장려 */
+function computeAwards(){
+  const out = {}; const all = [];
+  DIVS.forEach(div => rowsFor(div).rows.forEach(r => { if (r.out) out[r.t.booth] = {award:'수상 제외', tie:false, base:null, excluded:true}; else if (r.avg!=null) all.push({...r, div}); }));
+  if (!all.length) return out;
+  all.sort(cmpStat);
+  if (isManualTop()){
+    DIVS.forEach(div => {
+      const q = quotaOf(div);
+      const seq = ALL_AWARDS.flatMap(a => Array(q[a]).fill(a));
+      const list = all.filter(x => x.div===div);
+      list.forEach((x,i) => { const aw = seq[i] || '정원 초과';
+        const tie = (i>0 && sameStat(list[i-1],x) && (seq[i-1]||'정원 초과')!==aw) || (i<list.length-1 && sameStat(list[i+1],x) && (seq[i+1]||'정원 초과')!==aw);
+        out[x.t.booth] = {award:aw, tie, base:null, reason: aw==='대상' && list[i+1] ? tieReason(x, list[i+1]) : ''}; });
+    });
+    return out;
+  }
+  /* 대상: 전체를 동점자 처리 기준(평균 → 기술성 소계 → 창의성 소계)으로 정렬한 1위 */
+  const top = all[0]; out[top.t.booth] = {award:'대상', tie: all.length>1 && sameStat(all[1], top), reason: all[1] ? tieReason(top, all[1]) : ''};
+  DIVS.forEach(div => {
+    const q = quotaOf(div);
+    const seq = AWARDS.flatMap(a => Array(q[a]).fill(a));
+    const full = all.filter(x => x.div===div);
+    const list = full.filter(x => x !== top);
+    if (top.div===div) out[top.t.booth].base = seq[0] || '정원 초과';
+    /* 대상 선정 학부: 대상 팀을 빼고 다시 배정하므로 아래 팀들이 상격 순으로 한 단계씩 올라감 */
+    list.forEach((x,i) => { const aw = seq[i] || '정원 초과'; const base = seq[full.indexOf(x)] || '정원 초과';
+      const tie = (i>0 && sameStat(list[i-1],x) && (seq[i-1]||'정원 초과')!==aw) || (i<list.length-1 && sameStat(list[i+1],x) && (seq[i+1]||'정원 초과')!==aw);
+      out[x.t.booth] = {award:aw, tie, base: base!==aw ? base : null}; });
+  });
+  return out;
+}
+function fmt1(v){ return v==null ? '–' : (Math.round(v*10)/10).toFixed(1); }
+
+/* 실시간 갱신으로 다시 그릴 때 PDF·상장 선택값이 초기화되지 않도록 보존 */
+const KEEP_SEL = '#pdfJudge,#pdfTeam,#certDiv,#certTeam,#certStart,#certPad,#certFont,[data-certaw],[data-certname]';
+function keepKey(el){ return el.id || (el.dataset.certaw !== undefined ? 'aw:' + el.value : 'nm:' + el.dataset.certname); }
+function renderResults(app){
+  const kept = {}; app.querySelectorAll(KEEP_SEL).forEach(el => kept[keepKey(el)] = el.type === 'checkbox' ? el.checked : el.value);
+  renderResultsInner(app);
+  app.querySelectorAll(KEEP_SEL).forEach(el => { const k = keepKey(el); if (!(k in kept)) return; if (el.type === 'checkbox') el.checked = kept[k]; else if (el.tagName !== 'SELECT' || [...el.options].some(o => o.value === kept[k])) el.value = kept[k]; });
+  if (Object.keys(kept).length){ const st = $('#certStatus'); if (st) st.textContent = `선택 ${certFilter(certAll()).length}장 / 전체 ${certAll().length}장`; }
+}
+function renderResultsInner(app){
+  const all = Object.values(S.teams).length * 2;
+  const got = Object.keys(S.scores).length;
+  const AW = computeAwards();
+  const winner = Object.entries(AW).find(([,v])=>v.award==='대상');
+  const manual = isManualTop();
+  const gaps = DIVS.flatMap(div => rowsFor(div).rows.filter(r => r.gap!=null && r.gap>=GAP_LIMIT));
+  app.innerHTML = `
+    <div class="row" style="margin-bottom:6px"><div class="grow"><h1>집계</h1>
+      <p class="lead" style="margin:0">평균은 제출된 위원 점수로 계산합니다. 평균이 같으면 기술성 및 완성도 소계, 그다음 창의성 및 기획성 소계가 높은 팀이 앞섭니다(대상 포함). 위원 모두가 미참여로 처리한 팀은 순위·수상·상장에서 제외됩니다.</p></div>
+      <button class="btn primary" id="xlsx" type="button">엑셀로 받기</button></div>
+    <div class="stats" style="margin:12px 0 20px"><span>제출 <b class="num">${got}</b> / ${all}장</span>
+      <span>마감 상태 <b>${S.config.locked?'마감됨':'입력 중'}</b></span>
+      <span>점수 차 ${GAP_LIMIT}점 이상 <b class="num">${gaps.length}</b>팀</span>
+      ${(S.badScores||[]).length ? `<span class="chip bad">형식 오류로 집계에서 뺀 점수 ${S.badScores.length}건: ${esc(S.badScores.slice(0,5).join(', '))}${S.badScores.length>5?' 외':''}</span>` : ''}</div>
+    <section class="divblock"><h2>학부별 수상 현황</h2>
+      <p style="margin:0"><span class="chip ${manual?'ok':'todo'}">${manual?'지정 모드: 설정의 학부별 정원(대상 포함)대로 배정':'자동 모드: 전체 1위가 대상, 그 학부는 한 단계씩 상향'}</span></p>
+      <div class="tablebox"><table><thead><tr><th>학부</th><th class="n">참가팀</th>${ALL_AWARDS.map(a=>`<th class="n">${a}<br><small>배정 / 정원</small></th>`).join('')}<th>확인</th></tr></thead><tbody>
+      ${DIVS.map(div => { const q = quotaOf(div); const n = teamsOf(div).length;
+        const cnt = ALL_AWARDS.reduce((o,a)=>(o[a]=teamsOf(div).filter(t=>AW[t.booth]&&AW[t.booth].award===a).length,o),{});
+        const hasTop = !manual && winner && S.teams[winner[0]] && S.teams[winner[0]].division===div;
+        const eff = a => manual ? q[a] : a==='대상' ? (hasTop?1:0) : q[a] - (hasTop && a==='장려상' ? 1 : 0);
+        const qsum = manual ? ALL_AWARDS.reduce((s,k)=>s+q[k],0) : AWARDS.reduce((s,k)=>s+q[k],0);
+        const over = teamsOf(div).filter(t=>AW[t.booth]&&AW[t.booth].award==='정원 초과').length;
+        const note = qsum!==n ? `<span class="chip bad">정원 합 ${qsum} ≠ ${n}팀</span>` : over ? `<span class="chip bad">정원 초과 ${over}팀</span>` : hasTop ? '<span class="chip ok">대상 선정 · 상격 한 단계씩 상향 (장려 −1)</span>' : '';
+        const exN = teamsOf(div).filter(t=>AW[t.booth]&&AW[t.booth].excluded).length;
+        return `<tr><td>${esc(div)}</td><td class="n">${n}</td>${ALL_AWARDS.map(a=>`<td class="n">${a==='대상'&&cnt[a]?'<b>'+cnt[a]+'</b>':cnt[a]} / ${eff(a)}</td>`).join('')}<td>${note}${exN?` <span class="chip warn">미참여 수상 제외 ${exN}팀</span>`:''}</td></tr>`; }).join('')}
+      </tbody></table></div>
+      <p style="margin:0;color:var(--muted);font-size:13px">대상: ${winner ? `<b>${esc(teamLabel(S.teams[winner[0]]))}</b> (${esc(S.teams[winner[0]].division)}, 부스 ${esc(winner[0])})${winner[1].tie?' <span class="chip bad">완전 동점 · 운영위원회 결정 필요</span>':winner[1].reason?` <span class="chip ok">${esc(winner[1].reason)}</span>`:''}` : '아직 없음'}${Object.values(AW).filter(v=>v.award==='대상').length>1?` 외 ${Object.values(AW).filter(v=>v.award==='대상').length-1}팀`:''}. ${manual ? '설정에서 학부별 대상 정원을 지정했습니다. 학부 1위부터 대상·금상·은상·동상·장려상 정원 순서로 배정합니다.' : '전체 평균 1위 1팀. 대상이 나온 학부는 그다음 순위 팀부터 금상을 받아 상격이 한 단계씩 올라가고, 장려상이 1팀 줄습니다.'} 정원은 설정에서 바꿀 수 있습니다.</p></section>
+    ${pdfSectionHtml()}
+    ${certSectionHtml()}
+    <section class="divblock"><h2>위원별 진행</h2>
+      <div class="tablebox"><table><thead><tr><th>학부</th><th>평가위원</th><th>소속</th><th class="n">제출</th><th>마지막 제출</th></tr></thead><tbody>
+      ${judges().map(j => { const mine = teamsOf(j.division).map(t=>scoreOf(j.id,t.booth)).filter(Boolean); const last = mine.map(s=>s.updatedAt).sort().pop();
+        const n = teamsOf(j.division).length;
+        return `<tr><td>${esc(j.division)}</td><td>${esc(j.name)}</td><td>${esc(j.org||'')}</td><td class="n"><span class="chip ${mine.length===n&&n?'ok':'todo'}">${mine.length}/${n}</span></td><td class="num">${last?esc(fmtTime(last)):'–'}</td></tr>`; }).join('')}
+      </tbody></table></div></section>
+    ${DIVS.map(div => { const {js, rows} = rowsFor(div); const done = rows.reduce((a,r)=>a+r.n,0);
+      return `<section class="divblock"><div class="row"><h2 class="grow">${esc(div)} · ${rows.length}팀</h2><span class="chip ${done===rows.length*js.length&&done?'ok':'todo'} num">${done}/${rows.length*js.length}</span></div>
+      <div class="tablebox"><table>
+        <thead><tr><th class="n">순위</th><th>수상(안)</th><th>부스</th><th>학과</th><th>팀명</th><th>작품명</th>${js.map(j=>`<th class="n">${esc(j.name)}</th>`).join('')}<th class="n">점수 차</th><th class="n">평균</th><th class="n">기술성·완성도</th><th class="n">창의성·기획성</th></tr></thead>
+        <tbody>${rows.slice().sort((a,b)=>(a.rank??999)-(b.rank??999) || a.t.booth.localeCompare(b.t.booth)).map(r => { const aw = AW[r.t.booth]; return `
+          <tr class="${aw&&aw.award==='대상'?'rank1':''}"><td class="n">${r.rank??'–'}</td>
+          <td>${aw&&aw.excluded?'<span class="chip warn">미참여 · 수상 제외</span>':aw?`<b>${esc(aw.award)}</b>${aw.tie?' <span class="chip warn">동점 확인</span>':''}${aw.base?`<br><small style="color:var(--ok)">↑ ${esc(aw.base)}에서 상향</small>`:''}`:'–'}${r.tieNote?`<br><small style="color:var(--muted)">${esc(r.tieNote)}</small>`:''}</td>
+          <td class="num">${esc(r.t.booth)}</td><td>${esc(r.t.dept)}</td><td>${esc(teamLabel(r.t))}</td><td>${esc(r.t.work||'')}</td>
+          ${r.ss.map(s => `<td class="n">${s ? (s.absent?'<span class="chip warn">미참여</span>':s.total) : '<span class="chip todo">–</span>'}</td>`).join('')}
+          <td class="n">${r.gap==null?'–':(r.gap>=GAP_LIMIT?`<span class="chip bad">${r.gap}점</span>`:r.gap)}</td>
+          <td class="n"><b>${fmt1(r.avg)}</b>${r.n===1?' <span class="chip warn">1명</span>':''}</td><td class="n">${fmt1(r.tech)}</td><td class="n">${fmt1(r.creat)}</td></tr>`; }).join('')}</tbody>
+      </table></div></section>`; }).join('')}`;
+  $('#xlsx').onclick = exportXlsx;
+  bindPdf();
+  bindCert();
+}
+
+async function exportXlsx(){
+  if (!window.XLSX){ toast('엑셀 도구를 불러오지 못했습니다'); return; }
+  if (!S.downloads){ toast('이 화면에서는 파일을 받을 수 없습니다'); return; }
+  const head1 = ['학부','부스','학과','팀명','작품명','평가위원','소속', ...ITEMS.map((n,i)=>`${i+1}. ${n}`), ...AREAS.map(a=>a.name+' 소계'), '합계','미참여','메모','제출 시각'];
+  const raw = [head1];
+  DIVS.forEach(div => { const {js} = rowsFor(div); teamsOf(div).forEach(t => js.forEach(j => { const s = scoreOf(j.id,t.booth); if (!s) return;
+    let k=0; const subs = AREAS.map(a => { const v=sumItems(s.items.slice(k,k+a.items.length)); k+=a.items.length; return v; });
+    raw.push([div,t.booth,t.dept,teamLabel(t),t.work||'',j.name,j.org||'',...s.items,...subs,s.total,s.absent?'Y':'',s.memo||'',fmtTime(s.updatedAt)]); })); });
+  const AW = computeAwards();
+  const r1 = v => v==null ? '' : Math.round(v*10)/10;
+  const sum = [['학부','순위','수상(안)','상향 전 상격','동점 확인','동점 처리','부스','학과','팀명','작품명','지도교수','위원 1','위원 1 점수','위원 2','위원 2 점수','점수 차','점수 차 15점 이상','평균','기술성·완성도 평균','창의성·기획성 평균']];
+  DIVS.forEach(div => { const {js, rows} = rowsFor(div); rows.slice().sort((a,b)=>(a.rank??999)-(b.rank??999)).forEach(r => { const aw = AW[r.t.booth];
+    sum.push([div, r.rank??'', aw?aw.award:'', aw&&aw.base?aw.base:'', aw&&aw.tie?'확인 필요':'', r.tieNote||'', r.t.booth, r.t.dept, teamLabel(r.t), r.t.work||'', r.t.advisor||'', js[0]?.name||'', r.ss[0]?r.ss[0].total:'', js[1]?.name||'', r.ss[1]?r.ss[1].total:'', r.gap??'', r.gap!=null&&r.gap>=GAP_LIMIT?'Y':'', r1(r.avg), r1(r.tech), r1(r.creat)]); }); });
+  const quota = [['학부','참가팀',...ALL_AWARDS.flatMap(a=>[a+' 정원', a+' 배정']),'배정 방식']];
+  DIVS.forEach(div => { const q = quotaOf(div); quota.push([div, teamsOf(div).length, ...ALL_AWARDS.flatMap(a=>[q[a], teamsOf(div).filter(t=>AW[t.booth]&&AW[t.booth].award===a).length]), isManualTop()?'지정 모드':'자동 모드(대상 정원은 전체 1위 1팀)']); });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sum), '팀별 집계');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(quota), '학부별 수상 현황');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(raw), '항목별 점수');
+  const buf = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+  try { await S.downloads.save({ filename:'2026_캡스톤디자인_심사결과.xlsx', data: new Blob([buf]) }); toast('엑셀 파일을 저장했습니다'); }
+  catch(e){ if (e && e.code!=='declined') toast('파일을 저장하지 못했습니다'); }
+}
+
+/* ---------- 심사표 PDF (2025학년도 서식 기준, 마감 후 출력) ---------- */
+const SHEET_FONT = '"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif';
+const PW = 1240, PH = 1754; /* A4, 150dpi */
+const AREA_LABELS = ['창의성 및\n기획성\n(30)', '기술성 및\n완성도\n(20)', '발표 및\n팀협력\n(30)', '기대효과\n(20)'];
+function wrapLines(ctx, text, maxW){
+  const out = [];
+  String(text).split('\n').forEach(par => {
+    let line = '';
+    for (const w of par.split(/(?<=\s)/)){ /* 단어 단위로 줄바꿈, 한 단어가 너무 길면 글자 단위 */
+      const t = line + w;
+      if (ctx.measureText(t.trimEnd()).width <= maxW){ line = t; continue; }
+      if (line.trim()){ out.push(line.trimEnd()); line = ''; }
+      for (const ch of w){ const u = line + ch; if (ctx.measureText(u.trimEnd()).width > maxW && line){ out.push(line.trimEnd()); line = ch.trimStart(); } else line = u; }
+    }
+    out.push(line.trimEnd());
+  });
+  return out;
+}
+function textBlock(ctx, text, x, y, w, h, size, weight, align){
+  let s = size, lines;
+  do { ctx.font = `${weight} ${s}px ${SHEET_FONT}`; lines = wrapLines(ctx, text, w - 16); s -= 1; }
+  while ((lines.length * s * 1.35 > h - 8) && s > 12);
+  s += 1; const lh = s * 1.35; let ty = y + h/2 - (lines.length - 1) * lh / 2;
+  ctx.textAlign = align || 'center'; ctx.textBaseline = 'middle';
+  const tx = align === 'left' ? x + 12 : x + w/2;
+  lines.forEach(l => { ctx.fillText(l, tx, ty); ty += lh; });
+}
+function sheetText(t, j, s){
+  return ['2026학년도 캡스톤디자인 경진대회 심사표', '작품명팀명학과항목주요심사내용배점평가점수매우우수보통점수계평가위원소속성명인전자제출미참여전항목자동처리명지전문대학산학융합지원센터온라인심사시스템출력',
+    t.work||'', teamLabel(t), t.dept||'', j.name||'', j.org||'', ...ITEMS, ...AREA_LABELS, '0123456789():·~-./ '].join('');
+}
+async function ensureFonts(text){
+  if (!document.fonts || !document.fonts.load) return;
+  try { await Promise.all(['400','600','700'].map(w => document.fonts.load(`${w} 24px "IBM Plex Sans KR"`, text))); } catch(e){}
+}
+function drawSheet(ctx, t, j, s){
+  const L = 90, R = 1150, ink = '#1b1b1b', grey = '#D9DCE3', red = '#C0392B', blue = '#1F3FAF';
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, PW, PH);
+  ctx.strokeStyle = ink; ctx.fillStyle = ink;
+  const box = (x, y, w, h, fill, lw) => { if (fill){ ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); ctx.fillStyle = ink; } ctx.lineWidth = lw || 1.5; ctx.strokeRect(x, y, w, h); };
+  /* 제목 */
+  box(L, 110, R - L, 92, grey, 3);
+  ctx.font = `700 44px ${SHEET_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('2026학년도 캡스톤디자인 경진대회 심사표', (L + R)/2, 157);
+  /* 작품 정보 */
+  const iy = 240, ih = 62, lab = 160;
+  box(L, iy, R - L, ih * 2, null, 3);
+  box(L, iy, lab, ih, grey); box(L, iy + ih, lab, ih, grey);
+  textBlock(ctx, '작품명', L, iy, lab, ih, 26, 600); textBlock(ctx, '팀    명', L, iy + ih, lab, ih, 26, 600);
+  box(L + lab, iy, R - L - lab, ih); textBlock(ctx, t.work || '', L + lab, iy, R - L - lab, ih, 26, 400);
+  const mid = 660; box(L + lab, iy + ih, mid - L - lab, ih); textBlock(ctx, teamLabel(t), L + lab, iy + ih, mid - L - lab, ih, 26, 400);
+  box(mid, iy + ih, 160, ih, grey); textBlock(ctx, '학    과', mid, iy + ih, 160, ih, 26, 600);
+  box(mid + 160, iy + ih, R - mid - 160, ih); textBlock(ctx, t.dept || '', mid + 160, iy + ih, R - mid - 160, ih, 24, 400);
+  /* 평가표 */
+  const C = [L, 230, 590, 660, 770, 910, 1060, R];  /* 항목|내용|배점|10|9-8|7-5|점수 */
+  const ty = 400, hh = 110, rh = 90, totH = 72;
+  const yRows = ty + hh, yTot = yRows + rh * 10, yJ = yTot + totH;
+  box(L, ty, R - L, yJ + 92 - ty, null, 3);
+  ctx.lineWidth = 1.5;
+  /* 머리글 */
+  const head = (x0, x1, y0, h, txt) => { box(x0, y0, x1 - x0, h, '#EEF0F4'); textBlock(ctx, txt, x0, y0, x1 - x0, h, 22, 600); };
+  head(C[0], C[1], ty, hh, '항목'); head(C[1], C[2], ty, hh, '주요 심사내용'); head(C[2], C[3], ty, hh, '배점');
+  head(C[3], C[6], ty, 44, '평가점수');
+  head(C[3], C[4], ty + 44, hh - 44, '매우우수\n(10)'); head(C[4], C[5], ty + 44, hh - 44, '우수\n(9-8)'); head(C[5], C[6], ty + 44, hh - 44, '보통\n(7-5)');
+  head(C[6], C[7], ty, hh, '점수');
+  /* 항목 행 */
+  let i = 0;
+  AREAS.forEach((a, ai) => {
+    const y0 = yRows + i * rh; box(C[0], y0, C[1] - C[0], rh * a.items.length); textBlock(ctx, AREA_LABELS[ai], C[0], y0, C[1] - C[0], rh * a.items.length, 22, 400);
+    a.items.forEach(name => {
+      const y = yRows + i * rh, v = s ? s.items[i] : null;
+      box(C[1], y, C[2] - C[1], rh); textBlock(ctx, name, C[1], y, C[2] - C[1], rh, 21, 400, 'left');
+      box(C[2], y, C[3] - C[2], rh); textBlock(ctx, '10', C[2], y, C[3] - C[2], rh, 22, 400);
+      [[C[3], C[4], [10]], [C[4], C[5], [9, 8]], [C[5], C[6], [7, 6, 5]]].forEach(([x0, x1, pts]) => {
+        box(x0, y, x1 - x0, rh);
+        pts.forEach((p, k) => {
+          const cx = x0 + (x1 - x0) * (k + 1) / (pts.length + 1), cy = y + rh/2;
+          ctx.fillStyle = red; ctx.font = `400 23px ${SHEET_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(p), cx, cy);
+          if (v === p){ ctx.strokeStyle = blue; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(cx, cy, p === 10 ? 26 : 20, 22, 0, 0, Math.PI * 2); ctx.stroke(); ctx.strokeStyle = ink; ctx.lineWidth = 1.5; }
+          ctx.fillStyle = ink;
+        });
+      });
+      box(C[6], y, C[7] - C[6], rh);
+      if (v != null){ ctx.fillStyle = blue; textBlock(ctx, String(v), C[6], y, C[7] - C[6], rh, 36, 700); ctx.fillStyle = ink; }
+      i++;
+    });
+  });
+  /* 계 */
+  box(C[0], yTot, C[2] - C[0], totH); textBlock(ctx, '계', C[0], yTot, C[2] - C[0], totH, 24, 600);
+  box(C[2], yTot, C[3] - C[2], totH); textBlock(ctx, '100', C[2], yTot, C[3] - C[2], totH, 22, 400);
+  box(C[3], yTot, C[6] - C[3], totH);
+  if (s && s.absent){ ctx.fillStyle = red; textBlock(ctx, '미참여 · 전 항목 5점 자동 처리', C[3], yTot, C[6] - C[3], totH, 21, 600); ctx.fillStyle = ink; }
+  box(C[6], yTot, C[7] - C[6], totH);
+  if (s){ ctx.fillStyle = blue; textBlock(ctx, String(s.total), C[6], yTot, C[7] - C[6], totH, 38, 700); ctx.fillStyle = ink; }
+  /* 평가위원 */
+  box(C[0], yJ, C[1] - C[0], 92, grey); textBlock(ctx, '평가\n위원', C[0], yJ, C[1] - C[0], 92, 24, 600);
+  box(C[1], yJ, R - C[1], 92);
+  ctx.font = `400 25px ${SHEET_FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(`소속 : ${j.org || ''}`, C[1] + 24, yJ + 40);
+  ctx.fillText(`성명 : ${j.name || ''}   (인)`, 720, yJ + 40);
+  ctx.font = `400 17px ${SHEET_FONT}`; ctx.fillStyle = '#555';
+  ctx.fillText(s ? `전자 제출 ${fmtStamp(s.updatedAt)} · 본인 확인 체크 완료` : '미제출', 720, yJ + 72);
+  ctx.textAlign = 'center'; ctx.fillText(`명지전문대학 산학AI융합지원센터 · 온라인 심사 시스템 출력 · 부스 ${t.booth}`, PW/2, yJ + 140);
+  ctx.fillStyle = ink;
+}
+function fmtStamp(iso){ try { const d = new Date(iso); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}.${p(d.getMonth()+1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; } catch(e){ return ''; } }
+
+async function buildPdf(pages, filename){
+  if (!window.jspdf || !window.jspdf.jsPDF){ toast('PDF 도구를 불러오지 못했습니다'); return; }
+  if (!S.downloads){ toast('이 화면에서는 파일을 받을 수 없습니다'); return; }
+  if (!pages.length){ toast('출력할 제출 심사표가 없습니다'); return; }
+  const canvas = document.createElement('canvas'); canvas.width = PW; canvas.height = PH; const ctx = canvas.getContext('2d');
+  const pdf = new window.jspdf.jsPDF({unit:'mm', format:'a4', compress:true});
+  const btns = document.querySelectorAll('[data-pdf]'); btns.forEach(b => b.disabled = true);
+  const st = $('#pdfStatus');
+  try {
+    for (let k = 0; k < pages.length; k++){
+      const {t, j, s} = pages[k];
+      if (st) st.textContent = `만드는 중 ${k+1} / ${pages.length}`;
+      await ensureFonts(sheetText(t, j, s));
+      drawSheet(ctx, t, j, s);
+      if (k) pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, 210, 297);
+      await new Promise(r => setTimeout(r, 0));
+    }
+    if (st) st.textContent = `${pages.length}장 완성`;
+    await S.downloads.save({ filename, data: new Blob([pdf.output('arraybuffer')]) });
+    toast(`${pages.length}장짜리 PDF를 저장했습니다`);
+  } catch(e){ if (!(e && e.code === 'declined')) toast('PDF를 만들지 못했습니다'); }
+  finally { btns.forEach(b => b.disabled = !(S.config && S.config.locked)); }
+}
+function pagesForJudge(jid){ const j = judge(jid); if (!j) return []; return teamsOf(j.division).map(t => ({t, j, s: scoreOf(j.id, t.booth)})).filter(p => p.s); }
+function pagesForTeam(booth){ const t = S.teams[booth]; if (!t) return []; return judges().filter(j => j.division === t.division).map(j => ({t, j, s: scoreOf(j.id, booth)})).filter(p => p.s); }
+function safeName(x){ return String(x||'').replace(/[\\/:*?"<>|]/g,'').slice(0,60); }
+function pdfSectionHtml(){
+  const locked = S.config && S.config.locked;
+  return `<section class="divblock panel section"><div class="row"><h2 class="grow">심사표 PDF 출력</h2><span class="chip ${locked?'ok':'warn'}">${locked?'성적 마감됨':'마감 전'}</span></div>
+    <p style="margin:0;color:var(--muted)">2025학년도 서식을 그대로 쓴 '2026학년도 캡스톤디자인 경진대회 심사표'로 제출된 점수를 A4 한 장씩 출력합니다. ${locked?'':'<b>설정에서 심사를 마감하면</b> 출력할 수 있습니다.'} 미제출 심사표는 빠집니다.</p>
+    <div class="formgrid">
+      <div class="field"><label for="pdfJudge">평가위원별</label><div class="row"><select id="pdfJudge" class="grow">${judges().map(j=>`<option value="${esc(j.id)}">${esc(j.name)} · ${esc(j.division)} (${pagesForJudge(j.id).length}장)</option>`).join('')}</select>
+        <button class="btn primary" type="button" data-pdf="judge" ${locked?'':'disabled'}>PDF</button></div></div>
+      <div class="field"><label for="pdfTeam">평가팀별</label><div class="row"><select id="pdfTeam" class="grow">${Object.values(S.teams).sort((a,b)=>a.booth.localeCompare(b.booth)).map(t=>`<option value="${esc(t.booth)}">${esc(t.booth)} ${esc(teamLabel(t))} (${pagesForTeam(t.booth).length}장)</option>`).join('')}</select>
+        <button class="btn primary" type="button" data-pdf="team" ${locked?'':'disabled'}>PDF</button></div></div>
+      <div class="field"><label>전체 (위원 → 부스 순)</label><div class="row"><button class="btn" type="button" data-pdf="all" ${locked?'':'disabled'}>전체 PDF (${Object.keys(S.scores).length}장)</button><span id="pdfStatus" style="color:var(--muted);font-size:13px"></span></div></div>
+    </div></section>`;
+}
+function bindPdf(){
+  document.querySelectorAll('[data-pdf]').forEach(b => b.onclick = () => {
+    if (!(S.config && S.config.locked)) return;
+    if (b.dataset.pdf === 'judge'){ const j = judge($('#pdfJudge').value); buildPdf(pagesForJudge(j.id), `2026_캡스톤디자인_심사표_${safeName(j.name)}.pdf`); }
+    else if (b.dataset.pdf === 'team'){ const t = S.teams[$('#pdfTeam').value]; buildPdf(pagesForTeam(t.booth), `2026_캡스톤디자인_심사표_${t.booth}_${safeName(teamLabel(t))}.pdf`); }
+    else buildPdf(judges().flatMap(j => pagesForJudge(j.id)), '2026_캡스톤디자인_심사표_전체.pdf');
+  });
+}
+
+/* ---------- 상장 출력 (2026 상장 양식, 모든 글자를 한 글꼴로 통일: 기본 나눔명조) ---------- */
+const CERT_W = 1653, CERT_H = 2337, CERT_S = 200 / 72;   /* A4, 200dpi, 1pt = 2.78px */
+const CERT_FONTS = { '나눔명조': '"Nanum Myeongjo",serif', '고운바탕': '"Gowun Batang",serif', '송명': '"Song Myung",serif' };
+const CERT_ORDER = ['대상','금상','은상','동상','장려상'];
+function certFamily(){ const v = ($('#certFont')||{}).value; return CERT_FONTS[v] || CERT_FONTS['나눔명조']; }
+let certSealPromise = null;
+function loadCertSeal(){
+  if (!certSealPromise) certSealPromise = new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => { certSealPromise = null; rej(new Error('bg')); }; im.src = 'cert-seal.png'; });
+  return certSealPromise;
+}
+/* 전체 상장 목록: 상격 순 → 학부 순 → 학부 순위 → 팀원 순. 번호는 이 순서로 고정되어 필터와 관계없이 같은 학생은 같은 번호 */
+function certAll(){
+  const AW = computeAwards(); const rank = {};
+  DIVS.forEach(div => rowsFor(div).rows.forEach(r => { rank[r.t.booth] = r.rank ?? 999; }));
+  const teams = Object.values(S.teams).filter(t => AW[t.booth] && CERT_ORDER.includes(AW[t.booth].award));
+  teams.sort((a,b) => CERT_ORDER.indexOf(AW[a.booth].award) - CERT_ORDER.indexOf(AW[b.booth].award)
+    || DIVS.indexOf(a.division) - DIVS.indexOf(b.division) || rank[a.booth] - rank[b.booth] || a.booth.localeCompare(b.booth));
+  const out = [];
+  /* 상장 번호는 팀 단위: 같은 팀 학생은 같은 번호 (ti = 팀 순번) */
+  teams.forEach((t, ti) => { const names = (Array.isArray(t.memberNames) && t.memberNames.length) ? t.memberNames : [teamLabel(t)];
+    names.forEach(n => out.push({t, ti, award: AW[t.booth].award, name: n})); });
+  return out;
+}
+function certNo(i){ const start = Math.max(1, parseInt(($('#certStart')||{}).value, 10) || 1); const pad = ($('#certPad')||{}).value === '0' ? 0 : 3; return String(start + i).padStart(pad, '0'); }
+function certFilter(list){
+  const aw = [...document.querySelectorAll('[data-certaw]')].filter(x => x.checked).map(x => x.value);
+  const div = ($('#certDiv')||{}).value || ''; const booth = ($('#certTeam')||{}).value || '';
+  return list.map(c => ({...c, no: certNo(c.ti)})).filter(c => aw.includes(c.award) && (!div || c.t.division === div) && (!booth || c.t.booth === booth));
+}
+/* 성명 표기: 팀원(팀명). 팀원 명단이 없으면 팀명만 */
+function certPerson(c){ const team = teamLabel(c.t); return c.name && c.name !== team ? `${c.name}(${team})` : team; }
+function certTitle(award){ const el = document.querySelector(`[data-certname="${award}"]`); return (el && el.value.trim()) || award; }
+function drawCert(ctx, seal, c){
+  const P = v => v * CERT_S, fam = certFamily();
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, CERT_W, CERT_H);
+  ctx.fillStyle = '#000'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  const font = (size, weight) => { ctx.font = `${weight || 700} ${P(size)}px ${fam}`; };
+  /* 글자를 x0~x1 사이에 고르게 배치 (상장·총장 줄, 항목 이름, 본문 양쪽 맞춤) */
+  const spread = (text, x0, x1, y) => { const ch = [...text]; const ws = ch.map(k => ctx.measureText(k).width); const sum = ws.reduce((a,b)=>a+b,0);
+    const gap = ch.length > 1 ? (P(x1) - P(x0) - sum) / (ch.length - 1) : 0; let x = P(x0); ch.forEach((k, i) => { ctx.fillText(k, x, P(y)); x += ws[i] + gap; }); };
+  font(15, 400); ctx.fillText(`제2026-${c.no}호`, P(112), P(99.7));
+  font(36, 800); spread('상장', 225.6, 369.5 - 0, 160.0);
+  font(30, 800); ctx.fillText(certTitle(c.award), P(86), P(225.9));
+  /* 항목: 15pt 고정, 길면 다음 줄로 (줄 간격 18pt), 아래 항목은 그만큼 내려감 */
+  const rows = [['작품명', c.t.work || ''], ['성명', certPerson(c)], ['학과', `${c.t.dept || ''}${c.t.advisor ? `(${c.t.advisor} 교수)` : ''}`]];
+  if ((c.t.company || '').trim()) rows.push(['참여업체', c.t.company.trim()]);
+  let y = 292.4;
+  rows.forEach(([lab, val]) => {
+    font(15, 700); if ([...lab].length >= 4) ctx.fillText(lab, P(203.9), P(y)); else spread(lab, 203.9, 264.5, y);
+    ctx.fillText(':', P(270.5), P(y));
+    const lines = wrapLines(ctx, val, P(254));
+    lines.forEach((l, k) => ctx.fillText(l, P(290.4), P(y + k * 18)));
+    y += (lines.length - 1) * 18 + 21.5;
+  });
+  /* 본문: 원본과 같은 줄 나눔, 앞 두 줄은 양쪽 맞춤. 항목이 길어 내려오면 본문도 함께 내림 */
+  const by = Math.max(436.2, y + 30); font(21.9, 700);
+  const fitSpread = (t, x0, x1, yy) => { ctx.measureText(t).width > P(x1 - x0) ? (font(21.9 * P(x1 - x0) / ctx.measureText(t).width / CERT_S * CERT_S, 700), ctx.fillText(t, P(x0), P(yy)), font(21.9, 700)) : spread(t, x0, x1, yy); };
+  fitSpread('위 학생은 2026학년도 캡스톤디자인 경진대회', 98.7, 514.2, by);
+  fitSpread('에서 상기와 같은 작품으로 우수한 성적을', 80.8, 514.2, by + 35.1);
+  ctx.fillText('거두었으므로 이에 상장을 수여합니다.', P(80.8), P(by + 70.4));
+  font(18, 700); ctx.textAlign = 'center'; ctx.fillText('2026년 11월 20일', P(297.5), P(Math.max(617.7, by + 181.5))); ctx.textAlign = 'left';
+  font(26, 800); spread('명지전문대학총장', 155.4, 439.7 - 0, 685.3);
+  /* 직인: 원본 위치에 겹쳐 찍기 (글자가 비치도록 곱하기 합성) */
+  if (seal){ ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(seal, P(395), P(652), P(83), P(80)); ctx.restore(); }
+}
+async function buildCertPdf(){
+  if (!(S.config && S.config.locked)) return;
+  if (!window.jspdf || !window.jspdf.jsPDF){ toast('PDF 도구를 불러오지 못했습니다'); return; }
+  if (!S.downloads){ toast('이 화면에서는 파일을 받을 수 없습니다'); return; }
+  const list = certFilter(certAll());
+  if (!list.length){ toast('조건에 맞는 상장이 없습니다'); return; }
+  const st = $('#certStatus'); const btns = document.querySelectorAll('[data-cert]'); btns.forEach(b => b.disabled = true);
+  try {
+    const bg = await loadCertSeal();
+    if (document.fonts && document.fonts.load){ const txt = list.map(c => [c.t.work, c.name, c.t.dept, c.t.advisor, c.t.company, certTitle(c.award)].join('')).join('') + '제호상장작품명성학과참여업체:()교수0123456789-위학생은년도캡스톤디자인경진대회에서기와같은으로우수한적을거두었므로이수여합니다월일명지전문총';
+      try { await Promise.all(['400','700','800'].map(w => document.fonts.load(`${w} 40px ${certFamily()}`, txt))); } catch(e){} }
+    const canvas = document.createElement('canvas'); canvas.width = CERT_W; canvas.height = CERT_H; const ctx = canvas.getContext('2d');
+    const pdf = new window.jspdf.jsPDF({unit:'mm', format:'a4', compress:true});
+    for (let k = 0; k < list.length; k++){
+      if (st) st.textContent = `만드는 중 ${k+1} / ${list.length}`;
+      drawCert(ctx, bg, list[k]);
+      if (k) pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, 210, 297);
+      await new Promise(r => setTimeout(r, 0));
+    }
+    if (st) st.textContent = `${list.length}장 완성`;
+    const tag = list.length === certAll().length ? '전체' : `${list.length}장`;
+    await S.downloads.save({ filename: `2026_캡스톤디자인_상장_${tag}.pdf`, data: new Blob([pdf.output('arraybuffer')]) });
+    toast(`상장 ${list.length}장을 저장했습니다`);
+  } catch(e){ if (!(e && e.code === 'declined')) toast(e && e.message === 'bg' ? '상장 배경 이미지를 불러오지 못했습니다' : '상장 PDF를 만들지 못했습니다'); }
+  finally { btns.forEach(b => b.disabled = !(S.config && S.config.locked)); }
+}
+async function exportCertMerge(){
+  if (!window.XLSX || !S.downloads){ toast('이 화면에서는 파일을 받을 수 없습니다'); return; }
+  const list = certFilter(certAll());
+  if (!list.length){ toast('조건에 맞는 상장이 없습니다'); return; }
+  const rows = [['번호','상장명','과제명','팀원','학과','지도교수','참여업체','부스','팀명','학부']];
+  list.forEach(c => rows.push([c.no, certTitle(c.award), c.t.work||'', certPerson(c), c.t.dept||'', c.t.advisor||'', c.t.company||'', c.t.booth, teamLabel(c.t), c.t.division]));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), '상장');
+  try { await S.downloads.save({ filename:'2026_캡스톤디자인_상장_메일머지.xlsx', data: new Blob([XLSX.write(wb, {type:'array', bookType:'xlsx'})]) }); toast('메일머지용 엑셀을 저장했습니다'); }
+  catch(e){ if (!(e && e.code === 'declined')) toast('파일을 저장하지 못했습니다'); }
+}
+function certSectionHtml(){
+  const locked = S.config && S.config.locked; const all = certAll(); 
+  const cnt = a => { const sel = all.filter(c => c.award === a); const tm = new Set(sel.map(c => c.t.booth)).size; return `${tm}팀 · ${sel.length}장`; };
+  const topTeams = new Set(all.filter(c => c.award === '대상').map(c => c.t.booth)).size;
+  const topBad = topTeams > 1;
+  return `<section class="divblock panel section"><div class="row"><h2 class="grow">상장 출력</h2><span class="chip ${locked?'ok':'warn'}">${locked?'성적 마감됨':'마감 전'}</span></div>
+    <p style="margin:0;color:var(--muted)">2026 상장 양식에 번호·상장명·작품명·성명·학과(지도교수)·참여업체를 넣어 학생 1명당 1장씩 출력합니다. 모든 글자는 고른 한 글꼴로 통일하며(기본 나눔명조), 상장명 30pt·입력값 15pt로 고정하고 길면 다음 줄로 나눕니다. 수상(안) 기준이며 ${locked?'':'<b>심사를 마감하면</b> 출력할 수 있습니다. '}번호는 팀마다 하나씩(같은 팀 학생은 같은 번호), 대상 → 금상 → 은상 → 동상 → 장려상, 학부, 순위 순으로 매겨집니다.</p>
+    <div class="formgrid">
+      <div class="field"><label>상격 (상장명 표기)</label><div style="display:flex;flex-direction:column;gap:6px">${CERT_ORDER.map(a => `<div class="row" style="gap:8px"><label class="check" style="min-width:150px"><input type="checkbox" data-certaw value="${a}" checked> ${a} <span class="num" style="color:var(--muted);font-size:13px">${cnt(a)}</span></label><input type="text" data-certname="${a}" value="${a}" aria-label="${a} 상장명 표기" style="max-width:160px"></div>`).join('')}</div></div>
+      <div class="field"><label for="certDiv">학부</label><select id="certDiv"><option value="">전체 학부</option>${DIVS.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('')}</select>
+        <label for="certTeam" style="margin-top:8px">팀</label><select id="certTeam"><option value="">전체 팀</option>${Object.values(S.teams).sort((a,b)=>a.booth.localeCompare(b.booth)).map(t=>`<option value="${esc(t.booth)}">${esc(t.booth)} ${esc(teamLabel(t))}</option>`).join('')}</select></div>
+      <div class="field"><label for="certStart">시작 번호</label><input type="text" id="certStart" value="1" inputmode="numeric">
+        <label for="certPad" style="margin-top:8px">번호 형식</label><select id="certPad"><option value="3">001 (세 자리)</option><option value="0">1</option></select>
+        <label for="certFont" style="margin-top:8px">글꼴 (전체 통일)</label><select id="certFont"><option value="나눔명조">나눔명조 (권장, 격식 있는 명조)</option><option value="고운바탕">고운바탕 (부드러운 바탕)</option><option value="송명">송명 (붓글씨 느낌)</option></select></div>
+    </div>
+    <div class="row">${topBad ? `<p style="margin:0;width:100%"><span class="chip bad">대상이 ${topTeams}팀입니다. 대상은 1팀만 가능하니 설정 → 학부별 수상 정원에서 대상 칸을 한 학부만 1로 고친 뒤 출력하세요.</span></p>` : ''}<button class="btn primary" type="button" data-cert="pdf" ${locked&&!topBad?'':'disabled'}>상장 PDF</button><button class="btn" type="button" data-cert="merge" ${locked&&!topBad?'':'disabled'}>메일머지용 엑셀</button><span id="certStatus" class="num" style="color:var(--muted);font-size:13px">전체 ${all.length}장</span></div>
+  </section>`;
+}
+function bindCert(){
+  const upd = () => { const st = $('#certStatus'); if (st) st.textContent = `선택 ${certFilter(certAll()).length}장 / 전체 ${certAll().length}장`; };
+  document.querySelectorAll('[data-certaw],#certDiv,#certTeam').forEach(el => el.addEventListener('change', upd));
+  document.querySelectorAll('[data-cert]').forEach(b => b.onclick = () => b.dataset.cert === 'pdf' ? buildCertPdf() : exportCertMerge());
+  upd();
+}
+
+/* ---------- setup ---------- */
+function renderSetup(app){
+  const js = judges();
+  app.innerHTML = `
+    <h1>설정</h1><p class="lead">심사위원과 부스 명단을 관리합니다. 바꾼 내용은 심사 화면에 바로 반영됩니다.</p>
+    <section class="panel section"><div class="row"><h2 class="grow">심사 마감</h2>
+      <button class="btn ${S.config.locked?'':'primary'}" id="lock" type="button">${S.config.locked?'마감 해제':'심사 마감'}</button></div>
+      <p style="margin:0;color:var(--muted)">마감하면 위원들이 점수를 새로 제출하거나 고칠 수 없습니다. 현재 <b>${S.config.locked?'마감됨':'입력 중'}</b>.</p></section>
+    <section class="panel section"><h2>학부별 수상 정원</h2>
+      <p style="margin:0"><span class="chip ${isManualTop()?'ok':'todo'}" id="qmode">${isManualTop()?'지정 모드':'자동 모드'}</span></p>
+      <ul style="margin:0;padding-left:20px;color:var(--muted);line-height:1.7">
+        <li><b>자동 모드</b> (대상 칸이 모두 0): 전체 평균 1위가 대상이 되고, 그 학부는 상격이 한 단계씩 올라가며 장려상이 1팀 줄어듭니다.</li>
+        <li><b>지정 모드</b> (대상 칸에 1 이상): 최종 평가 후 대상을 줄 학부에 대상 인원을 넣고, 그 학부의 다른 정원(보통 장려상)을 같은 수만큼 줄여 저장하세요. 저장하면 학부 1위부터 대상 → 금상 → 은상 → 동상 → 장려상 순으로 바로 다시 배정됩니다.</li>
+        <li>각 학부 정원 합은 참가팀 수와 같아야 합니다. 자동 모드에서는 대상 칸을 빼고 셉니다.</li>
+      </ul>
+      <div class="tablebox"><table><thead><tr><th>학부</th><th class="n">참가팀</th>${ALL_AWARDS.map(a=>`<th>${a}</th>`).join('')}<th class="n">합</th><th>확인</th></tr></thead><tbody>
+      ${DIVS.map((div,di) => { const q = quotaOf(div); return `<tr><td>${esc(div)}</td><td class="n">${teamsOf(div).length}</td>
+        ${ALL_AWARDS.map((a,ai)=>`<td><input type="number" min="0" max="${a==='대상'?1:99}" id="q${di}_${ai}" data-qdiv="${di}" value="${q[a]}" style="width:64px;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg)" aria-label="${esc(div)} ${a} 정원"></td>`).join('')}
+        <td class="n" id="qsum${di}"></td><td id="qchk${di}"></td></tr>`; }).join('')}
+      </tbody></table></div>
+      <div class="row"><button class="btn primary" id="saveQuota" type="button">정원 저장</button><span id="qtotal" style="color:var(--muted)"></span></div></section>
+    <section class="panel section"><h2>위원별 점수 초기화</h2>
+      <p style="margin:0;color:var(--muted)">선택한 위원이 제출한 점수를 모두 지웁니다. 지운 점수는 되살릴 수 없으니 <b>엑셀로 받기</b>로 먼저 보관하세요. 버튼을 한 번 누르면 확인 버튼으로 바뀌고, 5초 안에 한 번 더 눌러야 지워집니다. ${S.config.locked?'<b>심사가 마감된 상태에서는 초기화할 수 없습니다.</b>':''}</p>
+      <div class="tablebox"><table><thead><tr><th>학부</th><th>평가위원</th><th class="n">제출</th><th>초기화</th></tr></thead><tbody>
+      ${js.map(j=>{ const n = Object.keys(S.scores).filter(k=>k.startsWith(j.id+'__')).length;
+        return `<tr><td>${esc(j.division)}</td><td>${esc(j.name)}</td><td class="n">${n}건</td><td><button class="btn" type="button" data-reset="${esc(j.id)}" ${n&&!S.config.locked?'':'disabled'}>점수 초기화</button></td></tr>`; }).join('')}
+      </tbody></table></div>
+      <div class="row"><button class="btn" type="button" data-reset="*" ${Object.keys(S.scores).length&&!S.config.locked?'':'disabled'}>전체 위원 점수 초기화 (${Object.keys(S.scores).length}건)</button><span id="resetStatus" style="color:var(--muted);font-size:13px"></span></div></section>
+    <section class="panel section"><h2>심사위원 · 본인 인증</h2>
+      <p style="margin:0;color:var(--muted)">위원은 <b>성명과 전화번호</b>를 입력해야 심사 화면에 들어갈 수 있습니다. 전화번호는 저장하지 않고 확인용 암호값(해시)만 저장하므로, 등록 후에는 번호가 화면에 다시 보이지 않습니다. 바꾸려면 새 번호를 넣고 저장하세요. 성명을 바꾸면 위원도 바뀐 성명으로 인증해야 합니다.</p>
+      <div class="tablebox"><table><thead><tr><th>학부</th><th>성명</th><th>소속</th><th>전화번호 (인증용)</th><th>상태</th></tr></thead><tbody>
+      ${js.map((j,i)=>`<tr><td>${esc(j.division)}</td><td><input type="text" id="jn${i}" value="${esc(j.name)}" aria-label="${esc(j.division)} 위원 이름"></td><td><input type="text" id="jo${i}" value="${esc(j.org||'')}" aria-label="${esc(j.division)} 위원 소속"></td>
+        <td><input type="text" id="jp${i}" inputmode="tel" autocomplete="off" placeholder="${j.phoneHash?'새 번호 입력 시 변경':'010-0000-0000'}" aria-label="${esc(j.name)} 위원 전화번호"></td>
+        <td>${j.phoneHash?'<span class="chip ok">등록됨</span>':'<span class="chip bad">미등록</span>'}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div><button class="btn primary" id="saveJudges" type="button">심사위원 저장</button></div></section>
+    <section class="panel section"><h2>부스 명단 한꺼번에 입력</h2>
+      <p style="margin:0;color:var(--muted)">엑셀에서 <b>부스번호 · 팀명 · 작품명</b> 세 열을 복사해 붙여 넣으세요. 한 줄에 한 팀, 탭이나 쉼표로 구분합니다.</p>
+      <textarea id="bulk" rows="5" placeholder="01	공대생	승강기 침수 감지, 제어 시스템"></textarea>
+      <div><button class="btn primary" id="applyBulk" type="button">명단 반영</button></div></section>
+    <section class="panel section"><h2>부스별 팀 정보</h2>
+      <div class="tablebox"><table><thead><tr><th>부스</th><th>학부</th><th>학과</th><th>팀명</th><th>작품명</th><th>참여업체 (상장)</th><th>팀원 (상장, 쉼표로 구분)</th></tr></thead><tbody>
+      ${Object.values(S.teams).sort((a,b)=>a.booth.localeCompare(b.booth)).map(t=>`<tr><td class="num">${esc(t.booth)}</td><td>${esc(t.division)}</td><td>${esc(t.dept)}</td>
+        <td><input type="text" id="tt${esc(t.booth)}" data-b="${esc(t.booth)}" data-f="team" value="${esc(t.team)}" aria-label="부스 ${esc(t.booth)} 팀명"></td>
+        <td><input type="text" id="tw${esc(t.booth)}" data-b="${esc(t.booth)}" data-f="work" value="${esc(t.work)}" aria-label="부스 ${esc(t.booth)} 작품명"></td>
+        <td><input type="text" id="tc${esc(t.booth)}" data-b="${esc(t.booth)}" data-f="company" value="${esc(t.company||'')}" aria-label="부스 ${esc(t.booth)} 참여업체"></td>
+        <td><input type="text" id="tm${esc(t.booth)}" data-b="${esc(t.booth)}" data-f="memberNames" value="${esc((t.memberNames||[]).join(', '))}" style="min-width:240px" aria-label="부스 ${esc(t.booth)} 팀원"></td></tr>`).join('')}
+      </tbody></table></div><p style="margin:0;color:var(--muted);font-size:13px">칸에서 나가면 자동 저장됩니다.</p></section>`;
+  let lockArmed = false;
+  $('#lock').onclick = async () => { const next = !S.config.locked;
+    /* 미제출 심사표가 있으면 바로 마감하지 않고 한 번 더 누르게 함 */
+    if (next && !lockArmed){ const need = judges().reduce((a,j)=>a+teamsOf(j.division).length,0); const miss = need - judges().reduce((a,j)=>a+teamsOf(j.division).filter(t=>scoreOf(j.id,t.booth)).length,0);
+      if (miss > 0){ lockArmed = true; $('#lock').textContent = `미제출 ${miss}장 · 그래도 마감`; toast(`아직 제출되지 않은 심사표가 ${miss}장 있습니다. 미제출 팀은 수상에서 빠집니다. 그래도 마감하려면 한 번 더 누르세요`); return; } }
+    try { await S.db.doc('config/main').update({locked: next}); toast(next?'심사를 마감했습니다':'마감을 해제했습니다'); } catch(e){ toast('바꾸지 못했습니다'); } };
+  const readQuota = () => { const quota = {}; DIVS.forEach((div,di) => { quota[div] = {}; ALL_AWARDS.forEach((a,ai) => { quota[div][a] = Math.max(0, parseInt($('#q'+di+'_'+ai).value,10) || 0); }); }); return quota; };
+  const checkQuota = () => {
+    const quota = readQuota(); const manual = DIVS.some(d => quota[d]['대상'] > 0); let bad = 0; let tops = 0;
+    DIVS.forEach((div,di) => { const q = quota[div]; const n = teamsOf(div).length; tops += q['대상'];
+      const s = (manual ? ALL_AWARDS : AWARDS).reduce((t,a)=>t+q[a],0);
+      $('#qsum'+di).textContent = s;
+      $('#qchk'+di).innerHTML = s===n ? '<span class="chip ok">맞음</span>' : `<span class="chip bad">${s>n?'+':''}${s-n}팀</span>`;
+      if (s!==n) bad++; });
+    const m = $('#qmode'); m.textContent = manual ? '지정 모드' : '자동 모드'; m.className = 'chip ' + (manual ? 'ok' : 'todo');
+    $('#qtotal').innerHTML = tops > 1 ? `<span class="chip bad">대상은 전체 1팀만 지정할 수 있습니다 (현재 ${tops})</span>` : manual ? '대상 1팀 지정' : '대상은 전체 1위 1팀 자동';
+    $('#saveQuota').disabled = tops > 1 || bad > 0;
+    if (bad > 0 && tops <= 1) $('#qtotal').innerHTML += ` · <span class="chip bad">정원 합이 참가팀 수와 다른 학부 ${bad}곳 · 맞춰야 저장됩니다</span>`;
+    return {quota, bad, tops};
+  };
+  app.querySelectorAll('[data-qdiv]').forEach(inp => inp.addEventListener('input', checkQuota));
+  checkQuota();
+  $('#saveQuota').onclick = async () => {
+    const {quota, bad, tops} = checkQuota();
+    if (tops > 1){ toast('대상은 전체 1팀만 지정할 수 있습니다'); return; }
+    if (bad > 0){ toast(`정원 합이 참가팀 수와 다른 학부가 ${bad}곳 있어 저장하지 않았습니다`); return; }
+    try { await S.db.doc('config/main').update({quota}); toast('수상 정원을 저장했습니다. 수상(안)이 다시 배정됩니다'); } catch(e){ toast('저장하지 못했습니다'); }
+  };
+  /* 위원별 점수 초기화: 첫 클릭은 확인 대기(5초), 두 번째 클릭에 삭제 */
+  app.querySelectorAll('[data-reset]').forEach(btn => { let armT = null; const label = btn.textContent;
+    btn.onclick = async () => {
+      if (S.config.locked){ toast('심사가 마감되어 초기화할 수 없습니다'); return; }
+      const jid = btn.dataset.reset; const keys = Object.keys(S.scores).filter(k => jid === '*' || k.startsWith(jid + '__'));
+      if (!keys.length){ toast('지울 점수가 없습니다'); return; }
+      const who = jid === '*' ? '전체 위원' : (judge(jid) ? judge(jid).name + ' 위원' : jid);
+      if (!armT){ btn.textContent = `${who} ${keys.length}건 삭제 확인`; btn.classList.add('primary'); armT = setTimeout(() => { armT = null; btn.textContent = label; btn.classList.remove('primary'); }, 5000); return; }
+      clearTimeout(armT); armT = null;
+      app.querySelectorAll('[data-reset]').forEach(b => b.disabled = true);
+      const st = $('#resetStatus'); let ok = 0, fail = 0;
+      for (const k of keys){ try { await S.db.doc('scores/' + k).delete(); delete S.scores[k]; ok++; } catch(e){ fail++; } if (st) st.textContent = `지우는 중 ${ok + fail} / ${keys.length}`; }
+      toast(fail ? `${who} 점수 ${ok}건을 지웠고 ${fail}건은 지우지 못했습니다` : `${who} 점수 ${ok}건을 초기화했습니다`);
+      render();
+    };
+  });
+  $('#saveJudges').onclick = async () => {
+    const next = []; let bad = 0, setN = 0;
+    for (let i = 0; i < js.length; i++){
+      const j = js[i]; const o = {...j, name:$('#jn'+i).value.trim()||j.name, org:$('#jo'+i).value.trim()};
+      const raw = $('#jp'+i).value.trim();
+      if (raw){ const ph = phoneDigits(raw); if (ph.length < 10 || ph.length > 11){ bad++; } else { o.phoneHash = await authHash(o.id, ph); setN++; } }
+      next.push(o);
+    }
+    if (bad){ toast(`전화번호 형식이 맞지 않는 칸이 ${bad}개 있습니다 (숫자 10~11자리)`); return; }
+    try { await S.db.doc('config/main').update({judges: next}); toast(setN ? `심사위원을 저장했습니다 · 전화번호 ${setN}명 등록` : '심사위원을 저장했습니다'); } catch(e){ toast('저장하지 못했습니다'); }
+  };
+  app.querySelectorAll('input[data-b]').forEach(inp => inp.addEventListener('change', async () => {
+    try { const v = inp.dataset.f === 'memberNames' ? inp.value.split(/[,，、]/).map(x=>x.trim()).filter(Boolean) : inp.value.trim(); await S.db.doc('teams/'+inp.dataset.b).update({[inp.dataset.f]: v}); toast('부스 '+inp.dataset.b+' 저장'); } catch(e){ toast('저장하지 못했습니다'); }
+  }));
+  $('#applyBulk').onclick = async () => {
+    const lines = $('#bulk').value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    let ok=0, skip=0;
+    for (const l of lines){
+      const p = l.split(/\t|,/).map(x=>x.trim());
+      const b = String(p[0]||'').replace(/\D/g,'').padStart(2,'0');
+      if (!S.teams[b]){ skip++; continue; }
+      try { await S.db.doc('teams/'+b).update({team:p[1]||'', work:p.slice(2).join(', ')}); ok++; } catch(e){ skip++; }
+    }
+    toast(`${ok}팀 반영${skip?`, ${skip}줄 건너뜀`:''}`);
+    if (ok) $('#bulk').value='';
+  };
+}
+
+/* ---------- boot ---------- */
+S.judgeId = store.get('judgeId');
+setView();
+(async () => {
+  if (!window.claude || !window.claude.use){ S.failed = true; return render(); }
+  let db = null, user = null, dl = null;
+  try { [db, user, dl] = await Promise.all([claude.use('db'), claude.use('user').catch(()=>null), claude.use('downloads').catch(()=>null)]); } catch(e){ db = null; }
+  S.db = db; S.user = user; S.downloads = dl;
+  if (!db){ S.failed = true; return render(); }
+  try { S.canEdit = user ? await user.canEdit() : false; S.uid = user ? await user.id() : null; } catch(e){}
+  document.querySelectorAll('#tabs a[data-view="results"],#tabs a[data-view="setup"]').forEach(a => a.hidden = !S.canEdit);
+  /* 구독이 끊기면 안내 (점수 입력 중이면 화면은 그대로 두고 알림만) */
+  const onErr = () => { if (!(S.loaded.config && S.loaded.teams)){ S.failed = true; render(); } else toast('저장소 연결이 끊겼습니다. 페이지를 새로 고친 뒤 제출 여부를 확인하세요'); };
+  db.doc('config/main').onSnapshot(s => { S.config = s.exists ? s.data() : {judges:[],locked:false}; S.loaded.config = true; setView(); }, onErr);
+  db.collection('teams').onSnapshot(q => { const m={}; q.docs.forEach(d => { m[d.id] = {booth:d.id, team:'', work:'', ...d.data()}; }); S.teams=m; S.loaded.teams=true; if (S.view!=='setup' || !document.activeElement || document.activeElement.tagName!=='INPUT') render(); }, onErr);
+  db.collection('scores').onSnapshot(q => { const m={}; const bad=[];
+    /* 형식 검사: 항목 10개, 각 5~10 정수. 합계는 항목으로 다시 계산. 이상 문서는 집계에서 빼고 집계 화면에 표시 */
+    q.docs.forEach(d => { const v = d.data() || {}; const it = Array.isArray(v.items) ? v.items.map(Number) : [];
+      if (it.length === 10 && it.every(x => Number.isInteger(x) && x >= 5 && x <= 10) && /^[^_]+__\d{2}$/.test(d.id)) m[d.id] = {...v, items: it, total: sumItems(it)}; else bad.push(d.id); });
+    S.badScores = bad; S.scores=m; S.loaded.scores=true; const typing = document.activeElement && ['INPUT','TEXTAREA'].includes(document.activeElement.tagName); if (!S.booth && (S.view!=='setup' || !typing)) render(); }, onErr);
+})();
+</script>
