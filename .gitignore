@@ -1,0 +1,7 @@
+cert-seal.png
+cert-bg.jpg
+seed*/
+members/
+*.xlsx
+*.pdf
+.DS_Store
