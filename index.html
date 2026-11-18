@@ -1068,7 +1068,17 @@ const CERT_ORDER = ['대상','금상','은상','동상','장려상'];
 function certFamily(){ const v = ($('#certFont')||{}).value; return CERT_FONTS[v] || CERT_FONTS['나눔명조']; }
 let certSealPromise = null;
 function loadCertSeal(){
-  if (!certSealPromise) certSealPromise = new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => { certSealPromise = null; rej(new Error('bg')); }; im.src = window.CERT_SEAL_URL || 'cert-seal.png'; });
+  if (!certSealPromise) certSealPromise = (async () => {
+    /* Supabase: 비공개 저장소(private-assets/cert-seal.png)의 임시 주소를 그때그때 받아 옴(업로드 직후에도 새로 고침 없이 반영) */
+    if (window.SB && SB.isAdmin && SB.client){
+      const s = await SB.client.storage.from('private-assets').createSignedUrl('cert-seal.png', 60 * 60);
+      if (!s.error && s.data) window.CERT_SEAL_URL = s.data.signedUrl;
+    }
+    return await new Promise((res, rej) => { const im = new Image();
+      if (window.CERT_SEAL_URL) im.crossOrigin = 'anonymous';   /* 다른 주소의 이미지를 PDF(캔버스)에 쓰려면 필요 */
+      im.onload = () => res(im); im.onerror = () => rej(new Error('seal'));
+      im.src = window.CERT_SEAL_URL || 'cert-seal.png'; });
+  })().catch(e => { certSealPromise = null; throw e; });
   return certSealPromise;
 }
 /* 전체 상장 목록: 상격 순 → 학부 순 → 학부 순위 → 팀원 순. 번호는 이 순서로 고정되어 필터와 관계없이 같은 학생은 같은 번호 */
