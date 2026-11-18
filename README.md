@@ -9,9 +9,8 @@
 | `claude-artifact/` | claude.ai 아티팩트 | claude.ai 계정으로만 접속 (대회 당일 사용본) |
 
 ## 파일
-- `index.html` — 화면(심사 입력 · 집계 · 설정). claude.ai 버전과 같은 코드
-- `sb-adapter.js` — 화면이 쓰던 저장 기능을 Supabase로 연결하는 어댑터(4초마다 갱신)
-- `config.js` — **Supabase 주소와 anon key를 넣는 곳**
+- `index.html` — **파일 하나로 된 전체 화면**(심사 입력 · 집계 · 설정 · PDF · 상장 + Supabase 연결).
+  파일 위쪽 `window.SB_CONFIG`에 **Supabase 주소와 anon key**를 넣습니다(`YOUR_PROJECT_ID`, `YOUR_ANON_PUBLIC_KEY` 자리).
 - `supabase/schema.sql` — 표·보안(RLS)·로그인/제출 기능 전체(새 프로젝트용)
 - `supabase/patch_1_login.sql`, `patch_2_admin.sql` — 이미 schema를 실행한 프로젝트에 추가로 실행
 
@@ -21,7 +20,7 @@
 2. 팀·위원 데이터 입력(학생 명단이 들어 있는 data.sql은 개인정보라 저장소에 올리지 않음)
 3. Authentication → Users에서 관리자 계정을 만들고 `admins` 표에 등록
 4. 상장 직인: Storage → `private-assets` 버킷에 `cert-seal.png` 업로드(관리자만 읽기 가능)
-5. `config.js`에 Project URL과 anon public key 입력 → 커밋
+5. `index.html`의 `window.SB_CONFIG`에 Project URL과 anon public key 입력 → 커밋
 6. Vercel에서 이 저장소를 Import → Framework: Other, Build 없음 → Deploy
 
 ## 보안
