@@ -129,26 +129,9 @@ td input[type=text]{min-width:140px;padding:6px 8px}
   .sheet-head{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
-.herofull{position:relative;width:100vw;margin:-24px 0 28px calc(50% - 50vw);min-height:calc(100svh - 70px);
-  background-color:#032a68;background-image:linear-gradient(to bottom,rgba(3,42,104,0) calc(45.3vw - 120px),#032a68 45.3vw),var(--hero);
-  background-repeat:no-repeat;background-position:left top;background-size:100% auto;display:flex;align-items:center}
-.herofull-in{width:100%;padding:clamp(24px,4vw,56px) max(16px,4vw);display:flex;justify-content:flex-end}
-.herofull-card{width:min(400px,100%);margin-top:clamp(40px,6vw,90px);background:rgba(255,255,255,.97);color:var(--fg);border-radius:18px;padding:26px 24px 22px;box-shadow:0 20px 50px rgba(0,12,45,.38)}
-.herofull-card h1{margin:0 0 6px;font-size:22px}
-.herofull-card .lead{font-size:13.5px;margin:0 0 16px}
-.herofull-card form{display:grid;gap:12px}
-.herofull-card details{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
-.herofull-card summary{cursor:pointer;font-weight:600;font-size:14px;color:var(--muted)}
-@media (max-width:860px),(orientation:portrait) and (max-width:1100px){
-  .herofull{display:block;min-height:calc(100svh - 70px);background-image:linear-gradient(to bottom,rgba(3,42,104,0) calc(45.3vw - 40px),#032a68 45.3vw),var(--hero)}
-  .herofull-in{justify-content:center;padding-top:calc(45.3vw - 30px);padding-bottom:28px}
-  .herofull-card{margin-top:0}
-}
-@media (max-width:600px){
-  .herofull{min-height:calc(100svh - 116px)}
-  .herofull-in{padding-top:calc(45.3vw + 8px)}
-  .herofull-card{padding:22px 18px 18px}
-}
+.hero{margin:0 0 26px;border-radius:16px;overflow:hidden;background:#0b2a6b;box-shadow:0 6px 24px rgba(10,30,80,.18)}
+.hero img{display:block;width:100%;height:auto}
+@media (max-width:600px){.hero{border-radius:10px;margin-bottom:18px}}
 </style>
 
 <header class="top">
@@ -289,26 +272,15 @@ function renderPicker(app){
 function renderPickerInner(app){
   const lockedOut = Date.now() < AUTH.until;
   app.innerHTML = `
-    <section class="herofull" style="--hero:url('${HERO_SRC}')" aria-label="“나의 아이디어도 명지에서!” 캡스톤디자인 경진대회">
-      <div class="herofull-in"><div class="herofull-card">
-        <h1>평가위원 로그인</h1>
-        <p class="lead">성명과 전화번호를 입력하세요. 인증되면 담당 학부의 부스 목록이 열리고, 이 기기에서는 로그아웃할 때까지 로그인이 유지됩니다.</p>
-        <form id="login" autocomplete="off">
-          <div class="field"><label for="lgName">성명</label><input type="text" id="lgName" autocomplete="off" placeholder="예: 홍길동" ${lockedOut?'disabled':''}></div>
-          <div class="field"><label for="lgPhone">전화번호</label><input type="text" id="lgPhone" inputmode="tel" autocomplete="off" placeholder="010-0000-0000" ${lockedOut?'disabled':''}></div>
-          <p id="lgMsg" role="alert" style="margin:0;color:var(--bad);font-size:14px;min-height:1.4em">${lockedOut?'입력이 여러 번 틀려 잠시 잠겼습니다. 1분 뒤 다시 시도하세요.':''}</p>
-          <button class="btn primary" id="lgGo" type="submit" style="min-height:48px" ${lockedOut?'disabled':''}>로그인</button>
-        </form>
-        ${window.SB && !S.canEdit ? `<details><summary>관리자 로그인</summary>
-          <form id="adLogin" autocomplete="on" style="margin-top:12px">
-            <div class="field"><label for="adEmail">이메일</label><input type="email" id="adEmail" autocomplete="username"></div>
-            <div class="field"><label for="adPw">비밀번호</label><input type="password" id="adPw" autocomplete="current-password"></div>
-            <p id="adMsg" role="alert" style="margin:0;color:var(--bad);font-size:14px;min-height:1.2em"></p>
-            <button class="btn primary" id="adGo" type="submit">관리자 로그인</button>
-          </form></details>` : ''}
-        ${window.SB && S.canEdit ? `<p style="margin:14px 0 0;color:var(--muted);font-size:13px">관리자 ${esc(SB.email||'')}로 로그인됨 · <a href="#" id="adOut">관리자 로그아웃</a></p>` : ''}
-      </div></div>
-    </section>
+    <figure class="hero"><img src="${HERO_SRC}" alt="“나의 아이디어도 명지에서!” 캡스톤디자인 경진대회" width="1400" height="634"></figure>
+    <h1>평가위원 로그인</h1>
+    <p class="lead">성명과 전화번호를 입력하세요. 인증되면 담당 학부의 부스 목록이 열리고, 이 기기에서는 로그아웃할 때까지 로그인이 유지됩니다.</p>
+    <form class="panel section" id="login" autocomplete="off" style="max-width:440px">
+      <div class="field"><label for="lgName">성명</label><input type="text" id="lgName" autocomplete="off" placeholder="예: 홍길동" ${lockedOut?'disabled':''}></div>
+      <div class="field"><label for="lgPhone">전화번호</label><input type="text" id="lgPhone" inputmode="tel" autocomplete="off" placeholder="010-0000-0000" ${lockedOut?'disabled':''}></div>
+      <p id="lgMsg" role="alert" style="margin:0;color:var(--bad);font-size:14px;min-height:1.4em">${lockedOut?'입력이 여러 번 틀려 잠시 잠겼습니다. 1분 뒤 다시 시도하세요.':''}</p>
+      <button class="btn primary" id="lgGo" type="submit" style="min-height:48px" ${lockedOut?'disabled':''}>로그인</button>
+    </form>
     ${S.canEdit ? `<section class="divblock" style="margin-top:28px"><h2>관리자: 심사위원 변경</h2>
       <p style="margin:0;color:var(--muted);font-size:14px">관리자 계정에서만 보입니다. 인증 없이 위원 화면을 열며, 이 창을 닫으면 풀립니다.</p>
       <div class="divgrid">
