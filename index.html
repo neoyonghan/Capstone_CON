@@ -138,6 +138,7 @@ td input[type=text]{min-width:140px;padding:6px 8px}
       <a href="#judge" data-view="judge">심사 입력</a>
       <a href="#results" data-view="results" hidden>집계</a>
       <a href="#setup" data-view="setup" hidden>설정</a>
+      <a href="#" id="adminOut" hidden style="color:var(--muted)">관리자 로그아웃</a>
     </nav>
   </div>
 </header>
@@ -1320,6 +1321,9 @@ setView();
   try { S.canEdit = user ? await user.canEdit() : false; S.uid = user ? await user.id() : null; } catch(e){}
   if (window.SB && SB.mode === 'judge' && SB.judgeId){ S.judgeId = SB.judgeId; store.set('judgeId', SB.judgeId); }
   document.querySelectorAll('#tabs a[data-view="results"],#tabs a[data-view="setup"]').forEach(a => a.hidden = !S.canEdit);
+  /* 관리자: 어느 화면에서나 상단에서 로그아웃 */
+  const ao = $('#adminOut');
+  if (ao && window.SB && S.canEdit){ ao.hidden = false; ao.title = (SB.email || '') + ' 로그아웃'; ao.onclick = e => { e.preventDefault(); store.set('judgeId', null); SB.logout(); }; }
   /* 구독이 끊기면 안내 (점수 입력 중이면 화면은 그대로 두고 알림만) */
   const onErr = () => { if (!(S.loaded.config && S.loaded.teams)){ S.failed = true; render(); } else toast('저장소 연결이 끊겼습니다. 페이지를 새로 고친 뒤 제출 여부를 확인하세요'); };
   db.doc('config/main').onSnapshot(s => { S.config = s.exists ? s.data() : {judges:[],locked:false}; S.loaded.config = true; setView(); }, onErr);
