@@ -1325,7 +1325,7 @@ setView();
   const ao = $('#adminOut');
   if (ao && window.SB && S.canEdit){ ao.hidden = false; ao.title = (SB.email || '') + ' 로그아웃'; ao.onclick = e => { e.preventDefault(); store.set('judgeId', null); SB.logout(); }; }
   /* 구독이 끊기면 안내 (점수 입력 중이면 화면은 그대로 두고 알림만) */
-  const onErr = () => { if (!(S.loaded.config && S.loaded.teams)){ S.failed = true; render(); } else toast('저장소 연결이 끊겼습니다. 페이지를 새로 고친 뒤 제출 여부를 확인하세요'); };
+  const onErr = (e) => { const why = window.SB && e && e.message ? ' (' + String(e.message).slice(0, 120) + ')' : ''; if (!(S.loaded.config && S.loaded.teams)){ S.failed = true; render(); } else toast('저장소 연결이 끊겼습니다. 페이지를 새로 고친 뒤 제출 여부를 확인하세요' + why); };
   db.doc('config/main').onSnapshot(s => { S.config = s.exists ? s.data() : {judges:[],locked:false}; S.loaded.config = true; setView(); }, onErr);
   db.collection('teams').onSnapshot(q => { const m={}; q.docs.forEach(d => { m[d.id] = {booth:d.id, team:'', work:'', ...d.data()}; }); S.teams=m; S.loaded.teams=true; if (S.view!=='setup' || !document.activeElement || document.activeElement.tagName!=='INPUT') render(); }, onErr);
   db.collection('scores').onSnapshot(q => { const m={}; const bad=[];
