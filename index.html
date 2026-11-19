@@ -1100,7 +1100,7 @@ function certAll(){
     names.forEach(n => out.push({t, ti, award: AW[t.booth].award, name: n})); });
   return out;
 }
-function certNo(i){ const start = Math.max(1, parseInt(($('#certStart')||{}).value, 10) || 1); const pad = ($('#certPad')||{}).value === '0' ? 0 : 3; return String(start + i).padStart(pad, '0'); }
+function certNo(i){ const start = Math.max(1, parseInt(($('#certStart')||{}).value, 10) || 73); const pad = ($('#certPad')||{}).value === '0' ? 0 : 3; return String(start + i).padStart(pad, '0'); }
 function certFilter(list){
   const aw = [...document.querySelectorAll('[data-certaw]')].filter(x => x.checked).map(x => x.value);
   const div = ($('#certDiv')||{}).value || ''; const booth = ($('#certTeam')||{}).value || '';
@@ -1191,7 +1191,7 @@ function certSectionHtml(){
       <div class="field"><label>상격 (상장명 표기)</label><div style="display:flex;flex-direction:column;gap:6px">${CERT_ORDER.map(a => `<div class="row" style="gap:8px"><label class="check" style="min-width:150px"><input type="checkbox" data-certaw value="${a}" checked> ${a} <span class="num" style="color:var(--muted);font-size:13px">${cnt(a)}</span></label><input type="text" data-certname="${a}" value="${a}" aria-label="${a} 상장명 표기" style="max-width:160px"></div>`).join('')}</div></div>
       <div class="field"><label for="certDiv">학부</label><select id="certDiv"><option value="">전체 학부</option>${DIVS.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('')}</select>
         <label for="certTeam" style="margin-top:8px">팀</label><select id="certTeam"><option value="">전체 팀</option>${Object.values(S.teams).sort((a,b)=>a.booth.localeCompare(b.booth)).map(t=>`<option value="${esc(t.booth)}">${esc(t.booth)} ${esc(teamLabel(t))}</option>`).join('')}</select></div>
-      <div class="field"><label for="certStart">시작 번호</label><input type="text" id="certStart" value="1" inputmode="numeric">
+      <div class="field"><label for="certStart">시작 번호</label><input type="text" id="certStart" value="73" inputmode="numeric">
         <label for="certPad" style="margin-top:8px">번호 형식</label><select id="certPad"><option value="3">001 (세 자리)</option><option value="0">1</option></select>
         <label for="certFont" style="margin-top:8px">글꼴 (전체 통일)</label><select id="certFont"><option value="나눔명조">나눔명조 (권장, 격식 있는 명조)</option><option value="고운바탕">고운바탕 (부드러운 바탕)</option><option value="송명">송명 (붓글씨 느낌)</option></select></div>
     </div>
