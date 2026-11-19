@@ -864,6 +864,7 @@ function renderResultsInner(app){
         return `<tr><td>${esc(div)}</td><td class="n">${n}</td>${ALL_AWARDS.map(a=>`<td class="n">${a==='대상'&&cnt[a]?'<b>'+cnt[a]+'</b>':cnt[a]} / ${eff(a)}</td>`).join('')}<td>${note}${exN?` <span class="chip warn">미참여 수상 제외 ${exN}팀</span>`:''}</td></tr>`; }).join('')}
       </tbody></table></div>
       <p style="margin:0;color:var(--muted);font-size:13px">대상: ${winner ? `<b>${esc(teamLabel(S.teams[winner[0]]))}</b> (${esc(S.teams[winner[0]].division)}, 부스 ${esc(winner[0])})${winner[1].tie?' <span class="chip bad">완전 동점 · 운영위원회 결정 필요</span>':winner[1].reason?` <span class="chip ok">${esc(winner[1].reason)}</span>`:''}` : '아직 없음'}${Object.values(AW).filter(v=>v.award==='대상').length>1?` 외 ${Object.values(AW).filter(v=>v.award==='대상').length-1}팀`:''}. ${manual ? '설정에서 학부별 대상 정원을 지정했습니다. 학부 1위부터 대상·금상·은상·동상·장려상 정원 순서로 배정합니다.' : '전체 평균 1위 1팀. 대상이 나온 학부는 그다음 순위 팀부터 금상을 받아 상격이 한 단계씩 올라가고, 장려상이 1팀 줄습니다.'} 정원은 설정에서 바꿀 수 있습니다.</p></section>
+    ${gapSectionHtml()}
     ${pdfSectionHtml()}
     ${certSectionHtml()}
     <section class="divblock"><h2>위원별 진행</h2>
@@ -885,8 +886,54 @@ function renderResultsInner(app){
           <td class="n"><b>${fmt1(r.avg)}</b>${r.n===1?' <span class="chip warn">1명</span>':''}</td><td class="n">${fmt1(r.tech)}</td><td class="n">${fmt1(r.creat)}</td></tr>`; }).join('')}</tbody>
       </table></div></section>`; }).join('')}`;
   $('#xlsx').onclick = exportXlsx;
+  if ($('#gapXlsx')) $('#gapXlsx').onclick = exportGapXlsx;
   bindPdf();
   bindCert();
+}
+
+/* 위원 간 점수 차 15점 이상: 같은 학부 위원 2명의 총점·영역별 점수 비교 */
+function areaSums(items){ let k=0; return AREAS.map(a => { const v = sumItems(items.slice(k,k+a.items.length)); k += a.items.length; return v; }); }
+function gapRows(){
+  const out = [];
+  DIVS.forEach(div => { const {js, rows} = rowsFor(div);
+    rows.filter(r => r.gap!=null && r.gap>=GAP_LIMIT).sort((a,b)=>b.gap-a.gap || a.t.booth.localeCompare(b.t.booth)).forEach(r => {
+      const [a, b] = r.ss; const sa = areaSums(a.items), sb = areaSums(b.items);
+      out.push({div, r, js, a, b, sa, sb, itemDiff: a.items.map((v,i)=>v-b.items[i])});
+    }); });
+  return out;
+}
+function gapSectionHtml(){
+  const g = gapRows();
+  return `<section class="divblock"><div class="row"><h2 class="grow">위원 간 점수 차 ${GAP_LIMIT}점 이상 · ${g.length}팀</h2>
+    <button class="btn" id="gapXlsx" type="button" ${g.length?'':'disabled'}>점수 차 목록 엑셀로 받기</button></div>
+    ${g.length ? `<div class="tablebox"><table><thead><tr><th>학부</th><th>부스</th><th>학과</th><th>팀명</th><th>작품명</th><th>위원 1</th><th class="n">총점</th><th>위원 2</th><th class="n">총점</th><th class="n">차이</th>${AREAS.map(a=>`<th class="n">${esc(a.name)}<br><small>위원1 / 위원2</small></th>`).join('')}</tr></thead><tbody>
+    ${g.map(x => `<tr><td style="white-space:nowrap">${esc(x.div)}</td><td class="num">${esc(x.r.t.booth)}</td><td>${esc(x.r.t.dept)}</td><td>${esc(teamLabel(x.r.t))}</td><td>${esc(x.r.t.work||'')}</td>
+      <td style="white-space:nowrap">${esc(x.js[0].name)}${x.a.absent?' <span class="chip warn">미참여</span>':''}</td><td class="n">${x.a.total}</td>
+      <td style="white-space:nowrap">${esc(x.js[1].name)}${x.b.absent?' <span class="chip warn">미참여</span>':''}</td><td class="n">${x.b.total}</td>
+      <td class="n"><span class="chip bad">${x.r.gap}점</span></td>
+      ${AREAS.map((a,i)=>{ const d = Math.abs(x.sa[i]-x.sb[i]); return `<td class="n">${x.sa[i]} / ${x.sb[i]}${d>=5?` <small style="color:var(--bad)">(${d})</small>`:''}</td>`; }).join('')}</tr>`).join('')}
+    </tbody></table></div><p style="margin:0;color:var(--muted);font-size:13px">차이가 큰 순서입니다. 영역별 칸의 빨간 숫자는 그 영역에서 5점 이상 차이 난 경우입니다.</p>`
+    : '<p style="margin:0;color:var(--muted)">해당하는 팀이 없습니다.</p>'}</section>`;
+}
+function gapSheet(){
+  const head = ['학부','부스','학과','팀명','작품명','지도교수','위원 1','위원 1 총점','위원 2','위원 2 총점','점수 차',
+    ...AREAS.flatMap(a=>[a.name+' (위원1)', a.name+' (위원2)', a.name+' 차이']),
+    ...ITEMS.map((n,i)=>`${i+1}. ${n} 차이(위원1−위원2)`), '위원 1 미참여','위원 2 미참여','위원 1 메모','위원 2 메모'];
+  const rows = [head];
+  gapRows().forEach(x => rows.push([x.div, x.r.t.booth, x.r.t.dept, teamLabel(x.r.t), x.r.t.work||'', x.r.t.advisor||'',
+    x.js[0].name, x.a.total, x.js[1].name, x.b.total, x.r.gap,
+    ...AREAS.flatMap((a,i)=>[x.sa[i], x.sb[i], Math.abs(x.sa[i]-x.sb[i])]),
+    ...x.itemDiff, x.a.absent?'Y':'', x.b.absent?'Y':'', x.a.memo||'', x.b.memo||'']));
+  return rows;
+}
+async function exportGapXlsx(){
+  if (!window.XLSX){ toast('엑셀 도구를 불러오지 못했습니다'); return; }
+  if (!S.downloads){ toast('이 화면에서는 파일을 받을 수 없습니다'); return; }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(gapSheet()), `점수차 ${GAP_LIMIT}점 이상`);
+  const buf = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+  try { await S.downloads.save({ filename:`2026_캡스톤디자인_위원간_점수차_${GAP_LIMIT}점이상.xlsx`, data: new Blob([buf]) }); toast('점수 차 목록을 저장했습니다'); }
+  catch(e){ if (e && e.code!=='declined') toast('파일을 저장하지 못했습니다'); }
 }
 
 async function exportXlsx(){
@@ -908,6 +955,7 @@ async function exportXlsx(){
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sum), '팀별 집계');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(quota), '학부별 수상 현황');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(raw), '항목별 점수');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(gapSheet()), `점수차 ${GAP_LIMIT}점 이상`);
   const buf = XLSX.write(wb, {type:'array', bookType:'xlsx'});
   try { await S.downloads.save({ filename:'2026_캡스톤디자인_심사결과.xlsx', data: new Blob([buf]) }); toast('엑셀 파일을 저장했습니다'); }
   catch(e){ if (e && e.code!=='declined') toast('파일을 저장하지 못했습니다'); }
