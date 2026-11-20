@@ -150,7 +150,7 @@ td input[type=text]{min-width:140px;padding:6px 8px}
 
 <header class="top">
   <div class="wrap">
-    <div class="brand"><small>명지전문대학 · 2026학년도</small><b>캡스톤디자인 경진대회 평가시스템</b></div>
+    <div class="brand"><small id="brandYear">명지전문대학 · 2026학년도</small><b>캡스톤디자인 경진대회 평가시스템</b></div>
     <nav class="tabs" id="tabs" aria-label="화면">
       <a href="#judge" data-view="judge">심사 입력</a>
       <a href="#results" data-view="results" hidden>집계</a>
@@ -229,6 +229,29 @@ window.SB_CONFIG = {
       } catch (e) { console.warn('posters', e); SB.posterUrls = SB.posterUrls || null; }
       finally { SB.posterBusy = false; }
     },
+    /* 점수 수정 이력(score_history: 바뀌기 전 값) */
+    async fetchHistory(booth) {
+      const { data, error } = await client.from('score_history').select('judge_id,booth,items,absent,memo,rev,changed_at,changed_by,action')
+        .eq('booth', Number(booth)).order('changed_at');
+      if (error) throw new Error(error.message);
+      return data || [];
+    },
+    async historyBooths() {
+      const { data, error } = await client.from('score_history').select('booth').limit(5000);
+      if (error) throw new Error(error.message);
+      const c = {}; (data || []).forEach(r => { const b = String(r.booth).padStart(2, '0'); c[b] = (c[b] || 0) + 1; }); return c;
+    },
+    /* 로그인 잠금 확인·해제 (관리자) */
+    async loginLocks() {
+      const { data, error } = await client.rpc('admin_login_locks');
+      if (error) throw new Error(/admin_login_locks|function/.test(error.message || '') ? 'Supabase에 패치 5(patch_5_improve.sql)를 먼저 실행하세요' : error.message);
+      return data || [];
+    },
+    async unlockJudge(id) {
+      const { data, error } = await client.rpc('admin_unlock_judge', { p_judge: id });
+      if (error) throw new Error(error.message);
+      return data;
+    },
     async uploadPoster(file, key) {
       const r = await client.storage.from('team-posters').upload(key, file, { upsert: true, contentType: 'image/jpeg', cacheControl: '3600' });
       if (r.error) throw r.error;
@@ -273,7 +296,8 @@ window.SB_CONFIG = {
     const s0 = st[0] || {};
     const config = {
       judges: js.filter(j => j.active !== false).map(j => ({ id: j.id, division: j.division, name: j.name, org: j.org || '', title: j.title || '', phoneHash: j.phone_hash ? 'set' : null })),
-      locked: !!s0.locked, lockedDivs: s0.locked_divs || [], slotMin: s0.slot_min || 10, quota
+      locked: !!s0.locked, lockedDivs: s0.locked_divs || [], slotMin: s0.slot_min || 10, quota,
+      ...(s0.event_year ? { year: s0.event_year, awardDate: s0.award_date } : evCfg())
     };
     const members = {};
     ms.forEach(m => (members[m.booth] = members[m.booth] || []).push(m.name));
@@ -291,6 +315,13 @@ window.SB_CONFIG = {
     return { config, teams, scores };
   }
 
+  /* 행사 정보(학년도·시상일): 로그인 전 화면에서도 제목에 쓰도록 공개 함수로 읽음 */
+  let EVENT = null;
+  async function loadEvent() {
+    try { const r = await client.rpc('event_info'); if (!r.error && r.data) EVENT = r.data; } catch (e) {}
+  }
+  const evCfg = () => EVENT ? { year: EVENT.year, awardDate: EVENT.award_date } : {};
+
   async function fetchJudge() {
     const { data, error } = await client.rpc('judge_sheet', { p_token: SB.token });
     if (error) {
@@ -300,7 +331,7 @@ window.SB_CONFIG = {
     const j = data.judge;
     SB.judgeId = j.id;
     const config = { judges: [{ id: j.id, division: j.division, name: j.name, org: j.org || '', title: j.title || '', phoneHash: 'set' }],
-                     locked: !!data.locked, slotMin: data.slot_min || 10, quota: {} };
+                     locked: !!data.locked, slotMin: data.slot_min || 10, quota: {}, ...evCfg() };
     const teams = {}, scores = {};
     (data.teams || []).forEach(t => {
       const b = pad(t.booth);
@@ -345,6 +376,14 @@ window.SB_CONFIG = {
       if ('lockedDivs' in patch) up.locked_divs = patch.lockedDivs || [];
       const { error } = await client.from('settings').update(up).eq('id', true);
       if (error) throw rpcErr(error);
+    }
+    if ('year' in patch || 'awardDate' in patch) {
+      const up = { updated_at: new Date().toISOString() };
+      if ('year' in patch) up.event_year = Number(patch.year);
+      if ('awardDate' in patch) up.award_date = patch.awardDate;
+      const { error } = await client.from('settings').update(up).eq('id', true);
+      if (error) throw rpcErr(/column/.test(error.message || '') ? { message: 'Supabase에 패치 5(patch_5_improve.sql)를 먼저 실행하세요' } : error);
+      await loadEvent();
     }
     if (patch.quota) {
       const rowsQ = Object.entries(patch.quota).map(([division, q]) => ({ division, grand: q['대상'] || 0, gold: q['금상'] || 0, silver: q['은상'] || 0, bronze: q['동상'] || 0, merit: q['장려상'] || 0 }));
@@ -436,7 +475,11 @@ window.SB_CONFIG = {
 
   /* ---------- 로그인·로그아웃 ---------- */
   SB.judgeLogin = async (name, phone) => {
-    const { data, error } = await client.rpc('judge_login', { p_name: name, p_phone: phone });
+    /* 기기 번호: 잠금을 기기별로 걸어, 다른 사람이 틀린 번호를 넣어도 이 기기는 잠기지 않게 함 */
+    let dev = LS.get('sbDevice'); if (!dev) { dev = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)); LS.set('sbDevice', dev); }
+    let { data, error } = await client.rpc('judge_login', { p_name: name, p_phone: phone, p_device: dev });
+    if (error && /judge_login|function|schema cache/i.test(error.message || '') && !/잠/.test(error.message || ''))
+      ({ data, error } = await client.rpc('judge_login', { p_name: name, p_phone: phone }));   /* 패치 5 적용 전 */
     if (error) return { ok: false, error: error.message || '로그인하지 못했습니다' };
     if (data && data.ok === false) return data;
     if (!data || !data.token) return { ok: false, error: '로그인하지 못했습니다' };
@@ -470,6 +513,7 @@ window.SB_CONFIG = {
         if (!r.error && r.data === true) { SB.mode = 'admin'; SB.isAdmin = true; SB.uid = session.user.id; SB.email = session.user.email; }
       }
       if (SB.mode === 'anon' && SB.token) SB.mode = 'judge';
+      await loadEvent(); state.config = { ...state.config, ...evCfg() };
       await refresh().catch(() => {});
       if (SB.mode === 'admin') {
         const s = await client.storage.from('private-assets').createSignedUrl('cert-seal.png', 60 * 60 * 6);
@@ -516,6 +560,10 @@ function teamsOf(div){ return Object.values(S.teams).filter(t => t.division === 
 function scoreKey(jid, booth){ return jid + '__' + booth; }
 function scoreOf(jid, booth){ return S.scores[scoreKey(jid, booth)]; }
 function teamLabel(t){ return t.team || ('부스 ' + t.booth); }
+/* 행사 정보: 설정에서 바꾸는 학년도·시상일 (기본 2026학년도, 11월 20일) */
+function evYear(){ const y = parseInt((S.config || {}).year, 10); return y >= 2000 && y <= 2100 ? y : 2026; }
+function evAwardDate(){ const v = (S.config || {}).awardDate; return /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : evYear() + '-11-20'; }
+function awardDateKo(){ const [y, m, d] = evAwardDate().split('-').map(Number); return `${y}년 ${m}월 ${d}일`; }
 /* 작품설명 이미지: Supabase Storage 비공개 버킷 team-posters/01.jpg … 80.jpg 의 임시 주소(6시간)를 한 번에 받아 씀 */
 function posterSrc(t){ const n = parseInt(String(t && t.booth || '').replace(/\D/g,''), 10); if (!(n >= 1 && n <= 999)) return '';
   const key = String(n).padStart(2,'0') + '.jpg';
@@ -567,6 +615,7 @@ window.addEventListener('hashchange', setView);
 
 function render(){
   const app = $('#app');
+  { const by = document.getElementById('brandYear'); if (by && S.config) by.textContent = '명지전문대학 · ' + evYear() + '학년도'; }
   if (S.failed){ app.innerHTML = '<div class="empty">' + (window.SB && !SB.configured
       ? '저장소 설정이 비어 있습니다. config.js에 Supabase 주소(url)와 anon key를 넣어 주세요.'
       : '심사 저장소에 연결할 수 없습니다. 인터넷 연결을 확인하고 새로 고침해 주세요.') + '</div>'; return; }
@@ -717,8 +766,39 @@ function openSheet(booth){
   /* baseAt: 이 화면을 연 시점의 저장본. 저장 직전에 다른 기기가 먼저 저장했는지 확인하는 데 씀 */
   S.draft = s ? {items:[...s.items], absent:!!s.absent, memo:s.memo||'', confirm:false, baseAt:s.updatedAt||null, baseRev:s.rev||null, force:false}
               : {items:Array(10).fill(null), absent:false, memo:'', confirm:false, baseAt:null, baseRev:null, force:false};
+  S.draftRestored = false; restoreDraft();
   render(); window.scrollTo(0,0);
 }
+
+/* 작성 중 점수: 제출 전까지 이 기기에 임시 저장(새로 고침·화면 꺼짐·뒤로 가기 대비).
+   다시 열 때 서버 저장본이 그사이 바뀌지 않았으면 이어서 쓰고, 바뀌었으면 버림 */
+function draftKey(jid, booth){ return 'draft:' + (jid || S.judgeId) + ':' + (booth || S.booth); }
+function sheetDirty(){
+  const d = S.draft; if (!d || !S.booth) return false;
+  const s = scoreOf(S.judgeId, S.booth);
+  const base = s ? {items:s.items||[], absent:!!s.absent, memo:s.memo||''} : {items:Array(10).fill(null), absent:false, memo:''};
+  const n = v => v == null ? null : Number(v);
+  return !!d.absent !== base.absent || (d.memo||'') !== base.memo || d.items.some((v,i) => n(v) !== n(base.items[i]));
+}
+function saveDraft(){
+  const d = S.draft; if (!d || !S.booth || !S.judgeId) return;
+  if (!sheetDirty()){ store.set(draftKey(), null); return; }
+  store.set(draftKey(), JSON.stringify({items:d.items, absent:!!d.absent, memo:d.memo||'', baseAt:d.baseAt, baseRev:d.baseRev, at:Date.now()}));
+}
+function clearDraft(jid, booth){ store.set(draftKey(jid, booth), null); }
+function hasDraft(jid, booth){ return !!store.get(draftKey(jid, booth)); }
+function restoreDraft(){
+  let x = null; try { x = JSON.parse(store.get(draftKey()) || 'null'); } catch(e){ x = null; }
+  if (!x) return;
+  const j = judge(S.judgeId);
+  if ((j && divLocked(j.division)) || x.baseAt !== S.draft.baseAt || x.baseRev !== S.draft.baseRev || Date.now() - (x.at || 0) > 3 * 24 * 3600e3){ store.set(draftKey(), null); return; }
+  if (Array.isArray(x.items) && x.items.length === 10) S.draft.items = x.items.map(v => (v >= 5 && v <= 10) ? Number(v) : null);
+  S.draft.absent = !!x.absent; S.draft.memo = String(x.memo || '').slice(0, 300);
+  S.draftRestored = sheetDirty();
+}
+window.addEventListener('beforeunload', e => {
+  if (S.booth && S.draft && sheetDirty()){ saveDraft(); e.preventDefault(); e.returnValue = ''; }
+});
 
 function renderSheet(app, j, t, locked){
   const d = S.draft; const prev = scoreOf(j.id, t.booth);
@@ -743,6 +823,7 @@ function renderSheet(app, j, t, locked){
     <div class="row" style="margin-bottom:12px"><button class="btn ghost" id="back" type="button">← ${esc(j.division)} 목록</button>
       ${prev ? `<span class="chip ok">제출됨 · ${esc(fmtTime(prev.updatedAt))}</span>` : ''}</div>
     ${locked ? '<div class="banner">심사가 마감되어 점수를 고칠 수 없습니다.</div>' : ''}
+    ${!locked && S.draftRestored ? '<div class="banner" style="background:var(--t9bg);color:var(--t9)">제출하지 않고 나갔던 점수를 이 기기에서 불러왔습니다. 확인한 뒤 제출하세요.</div>' : ''}
     <form class="panel" id="sheet" autocomplete="off">
       <div class="sheet-top"><dl class="sheet-head">
         <dt>작품명</dt><dd>${esc(t.work || '—')}</dd>
@@ -765,7 +846,14 @@ function renderSheet(app, j, t, locked){
         <button class="btn primary" id="save" type="submit" ${ready?'':'disabled'}>${prev?'수정 제출':'제출'}</button>
       </div>
     </form>`;
-  $('#back').onclick = () => { S.booth=null; render(); };
+  $('#back').onclick = () => { const b = $('#back');
+    if (!locked && sheetDirty() && !b.dataset.arm){
+      saveDraft(); b.dataset.arm = '1'; b.textContent = '제출하지 않고 나가기 (한 번 더 누르기)'; b.style.color = 'var(--warn)';
+      toast('아직 제출하지 않았습니다. 작성 내용은 이 기기에 보관되어 다시 열면 이어서 쓸 수 있습니다');
+      setTimeout(() => { if (b.isConnected){ delete b.dataset.arm; b.textContent = '← ' + j.division + ' 목록'; b.style.color = ''; } }, 5000);
+      return;
+    }
+    S.booth = null; render(); };
   const form = $('#sheet');
   form.addEventListener('change', e => {
     const el = e.target;
@@ -776,6 +864,8 @@ function renderSheet(app, j, t, locked){
   });
   $('#memo').addEventListener('input', e => d.memo = e.target.value);
   form.addEventListener('submit', e => { e.preventDefault(); saveScore(j, t); });
+  form.addEventListener('change', saveDraft);
+  $('#memo').addEventListener('input', saveDraft);
 }
 
 function refreshSheet(){
@@ -815,7 +905,7 @@ async function saveScore(j, t){
     baseRev: cur ? (cur.rev || 0) : 0 };  /* Supabase: 서버가 이 값으로 동시 저장을 한 번 더 검사 */
   try {
     await S.db.doc('scores/' + scoreKey(j.id, t.booth)).set(body);
-    S.scores[scoreKey(j.id,t.booth)] = body;
+    S.scores[scoreKey(j.id,t.booth)] = body; clearDraft(j.id, t.booth); S.draftRestored = false;
     toast(`${teamLabel(t)} ${d.absent?'미참여로':body.total+'점으로'} 제출했습니다`);
     const next = teamsOf(j.division).find(x => !scoreOf(j.id, x.booth));
     if (next) openSheet(next.booth); else { S.booth=null; render(); }
@@ -942,6 +1032,7 @@ function renderResultsInner(app){
       </tbody></table></div>
       <p style="margin:0;color:var(--muted);font-size:13px">대상: ${winner ? `<b>${esc(teamLabel(S.teams[winner[0]]))}</b> (${esc(S.teams[winner[0]].division)}, 부스 ${esc(winner[0])})${winner[1].tie?' <span class="chip bad">완전 동점 · 운영위원회 결정 필요</span>':winner[1].reason?` <span class="chip ok">${esc(winner[1].reason)}</span>`:''}` : '아직 없음'}${Object.values(AW).filter(v=>v.award==='대상').length>1?` 외 ${Object.values(AW).filter(v=>v.award==='대상').length-1}팀`:''}. ${manual ? '설정에서 학부별 대상 정원을 지정했습니다. 학부 1위부터 대상·금상·은상·동상·장려상 정원 순서로 배정합니다.' : '전체 평균 1위 1팀. 대상이 나온 학부는 그다음 순위 팀부터 금상을 받아 상격이 한 단계씩 올라가고, 장려상이 1팀 줄습니다.'} 정원은 설정에서 바꿀 수 있습니다.</p></section>
     ${gapSectionHtml()}
+    ${historySectionHtml()}
     ${pdfSectionHtml()}
     ${certSectionHtml()}
     <section class="divblock"><h2>위원별 진행</h2>
@@ -964,6 +1055,7 @@ function renderResultsInner(app){
       </table></div></section>`; }).join('')}`;
   $('#xlsx').onclick = exportXlsx;
   if ($('#gapXlsx')) $('#gapXlsx').onclick = exportGapXlsx;
+  bindHistory();
   bindPdf();
   bindCert();
 }
@@ -978,6 +1070,45 @@ function gapRows(){
       out.push({div, r, js, a, b, sa, sb, itemDiff: a.items.map((v,i)=>v-b.items[i])});
     }); });
   return out;
+}
+/* ---------- 점수 수정 이력: 이의 제기 때 언제 어떤 점수로 바뀌었는지 확인 ---------- */
+function historySectionHtml(){
+  const ts = Object.values(S.teams).sort((a,b) => String(a.booth).localeCompare(String(b.booth)));
+  return `<section class="panel section" id="histSec"><h2>점수 수정 이력</h2>
+    <p style="margin:0;color:var(--muted)">팀을 고르면 위원별로 처음 제출부터 지금 점수까지 바뀐 순서대로 보여 줍니다. <span id="histHint"></span></p>
+    <div class="row"><select id="histTeam" class="grow" style="max-width:520px">${ts.map(t => `<option value="${esc(t.booth)}">${esc(t.booth)} · ${esc(teamLabel(t))} · ${esc(t.work || '')}</option>`).join('')}</select>
+      <button class="btn" id="histGo" type="button">이력 보기</button></div>
+    <div id="histOut"></div></section>`;
+}
+async function historyRows(booth){
+  const out = []; const tot = (h) => h.absent ? ABSENT_SCORE * 10 : sumItems((h.items || []).map(Number));
+  const viaOf = (v, by, jid) => v === 'admin' || /^admin/.test(String(by || '')) ? '관리자 대리' : (v === 'judge' || (by && by === jid) ? '위원' : '');
+  if (window.SB && SB.fetchHistory){
+    (await SB.fetchHistory(booth)).forEach(h => { const j = judge(h.judge_id);
+      out.push({ judge: j ? j.name : h.judge_id, at: h.changed_at, kind: h.action === 'delete' ? '초기화로 지워진 값' : '바뀌기 전 값', items: h.items, absent: h.absent, memo: h.memo, total: tot(h), via: viaOf(null, h.changed_by, h.judge_id), atLabel: '바뀐 시각' }); });
+  }
+  judges().forEach(j => { const s = scoreOf(j.id, booth); if (!s) return;
+    (Array.isArray(s.hist) ? s.hist : []).forEach(h => out.push({ judge: j.name, at: h.updatedAt, kind: '이전 제출', items: h.items, absent: h.absent, memo: h.memo, total: tot(h), via: viaOf(h.via, h.by, j.id) }));
+    out.push({ judge: j.name, at: s.updatedAt, kind: '현재 점수', items: s.items, absent: s.absent, memo: s.memo, total: tot(s), via: viaOf(s.via, s.by, j.id), now: true });
+  });
+  return out.sort((a, b) => a.judge.localeCompare(b.judge) || String(a.at || '').localeCompare(String(b.at || '')));
+}
+async function historyCounts(){
+  if (window.SB && SB.historyBooths){ try { return await SB.historyBooths(); } catch(e){ return null; } }
+  const c = {}; Object.values(S.scores).forEach(s => { const n = Array.isArray(s.hist) ? s.hist.length : 0; if (n) c[s.booth] = (c[s.booth] || 0) + n; }); return c;
+}
+function bindHistory(){
+  const go = $('#histGo'); if (!go) return;
+  historyCounts().then(c => { if (!c || !$('#histTeam')) return; const n = Object.keys(c).length;
+    $('#histHint').textContent = n ? `점수가 바뀐 적 있는 팀 ${n}곳은 목록에 '수정 ○회'로 표시했습니다.` : '아직 점수가 바뀐 팀이 없습니다.';
+    [...$('#histTeam').options].forEach(o => { const k = c[o.value] || c[String(parseInt(o.value, 10))]; if (k && !o.text.includes('수정 ')) o.text += ` · 수정 ${k}회`; }); });
+  go.onclick = async () => { const booth = $('#histTeam').value; const out = $('#histOut'); out.innerHTML = '<p style="color:var(--muted)">불러오는 중…</p>';
+    let rows; try { rows = await historyRows(booth); } catch(e){ out.innerHTML = `<p style="color:var(--bad)">이력을 불러오지 못했습니다: ${esc(e.message || e)}</p>`; return; }
+    if (!rows.length){ out.innerHTML = '<p style="color:var(--muted)">이 팀은 아직 제출된 점수가 없습니다.</p>'; return; }
+    out.innerHTML = `<div class="tablebox"><table><thead><tr><th>평가위원</th><th>구분</th><th>시각</th><th class="n">합계</th>${ITEMS.map((_, i) => `<th class="n">${i + 1}</th>`).join('')}<th>메모</th><th>입력</th></tr></thead><tbody>
+      ${rows.map(r => `<tr${r.now ? ' style="font-weight:600"' : ''}><td>${esc(r.judge)}</td><td>${esc(r.kind)}</td><td class="num">${esc(r.at ? fmtTime(r.at) : '—')}</td><td class="n">${r.absent ? '미참여 ' : ''}${r.total}</td>${ITEMS.map((_, i) => `<td class="n">${r.absent ? '·' : esc((r.items || [])[i] ?? '')}</td>`).join('')}<td>${esc(r.memo || '')}</td><td>${esc(r.via || '')}</td></tr>`).join('')}
+      </tbody></table></div><p style="margin:0;font-size:13px;color:var(--muted)">'바뀌기 전 값'의 시각은 그 값이 새 점수로 바뀐 시각입니다. 점수 초기화로 지운 점수는 웹 버전에서만 이력에 남습니다.</p>`;
+  };
 }
 function gapSectionHtml(){
   const g = gapRows();
@@ -1009,7 +1140,7 @@ async function exportGapXlsx(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(gapSheet()), `점수차 ${GAP_LIMIT}점 이상`);
   const buf = XLSX.write(wb, {type:'array', bookType:'xlsx'});
-  try { await S.downloads.save({ filename:`2026_캡스톤디자인_위원간_점수차_${GAP_LIMIT}점이상.xlsx`, data: new Blob([buf]) }); toast('점수 차 목록을 저장했습니다'); }
+  try { await S.downloads.save({ filename:`${evYear()}_캡스톤디자인_위원간_점수차_${GAP_LIMIT}점이상.xlsx`, data: new Blob([buf]) }); toast('점수 차 목록을 저장했습니다'); }
   catch(e){ if (e && e.code!=='declined') toast('파일을 저장하지 못했습니다'); }
 }
 
@@ -1034,7 +1165,7 @@ async function exportXlsx(){
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(raw), '항목별 점수');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(gapSheet()), `점수차 ${GAP_LIMIT}점 이상`);
   const buf = XLSX.write(wb, {type:'array', bookType:'xlsx'});
-  try { await S.downloads.save({ filename:'2026_캡스톤디자인_심사결과.xlsx', data: new Blob([buf]) }); toast('엑셀 파일을 저장했습니다'); }
+  try { await S.downloads.save({ filename:`${evYear()}_캡스톤디자인_심사결과.xlsx`, data: new Blob([buf]) }); toast('엑셀 파일을 저장했습니다'); }
   catch(e){ if (e && e.code!=='declined') toast('파일을 저장하지 못했습니다'); }
 }
 
@@ -1066,7 +1197,7 @@ function textBlock(ctx, text, x, y, w, h, size, weight, align){
   lines.forEach(l => { ctx.fillText(l, tx, ty); ty += lh; });
 }
 function sheetText(t, j, s){
-  return ['2026학년도 캡스톤디자인 경진대회 심사표', '작품명팀명학과항목주요심사내용배점평가점수매우우수보통점수계평가위원소속성명인전자제출미참여전항목자동처리명지전문대학산학융합지원센터온라인심사시스템출력',
+  return [(evYear() + '학년도 캡스톤디자인 경진대회 심사표'), '작품명팀명학과항목주요심사내용배점평가점수매우우수보통점수계평가위원소속성명인전자제출미참여전항목자동처리명지전문대학산학융합지원센터온라인심사시스템출력',
     t.work||'', teamLabel(t), t.dept||'', j.name||'', j.org||'', ...ITEMS, ...AREA_LABELS, '0123456789():·~-./ '].join('');
 }
 async function ensureFonts(text){
@@ -1080,7 +1211,7 @@ function drawSheet(ctx, t, j, s){
   const box = (x, y, w, h, fill, lw) => { if (fill){ ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); ctx.fillStyle = ink; } ctx.lineWidth = lw || 1.5; ctx.strokeRect(x, y, w, h); };
   /* 제목 */
   box(L, 110, R - L, 92, grey, 3);
-  ctx.font = `700 44px ${SHEET_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('2026학년도 캡스톤디자인 경진대회 심사표', (L + R)/2, 157);
+  ctx.font = `700 44px ${SHEET_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText((evYear() + '학년도 캡스톤디자인 경진대회 심사표'), (L + R)/2, 157);
   /* 작품 정보 */
   const iy = 240, ih = 62, lab = 160;
   box(L, iy, R - L, ih * 2, null, 3);
@@ -1174,7 +1305,7 @@ function safeName(x){ return String(x||'').replace(/[\\/:*?"<>|]/g,'').slice(0,6
 function pdfSectionHtml(){
   const locked = DIVS.some(divLocked); const all = allLocked();
   return `<section class="divblock panel section"><div class="row"><h2 class="grow">심사표 PDF 출력</h2><span class="chip ${all?'ok':locked?'todo':'warn'}">${esc(lockLabel())}</span></div>
-    <p style="margin:0;color:var(--muted)">2025학년도 서식을 그대로 쓴 '2026학년도 캡스톤디자인 경진대회 심사표'로 제출된 점수를 A4 한 장씩 출력합니다. <b>마감된 학부</b>의 심사표만 출력되며, 전체 PDF는 마감된 학부를 모두 담습니다. ${locked?'':'<b>설정에서 학부별 또는 전체 마감을 하면</b> 출력할 수 있습니다.'} 미제출 심사표는 빠집니다.</p>
+    <p style="margin:0;color:var(--muted)">2025학년도 서식을 그대로 쓴 '${evYear()}학년도 캡스톤디자인 경진대회 심사표'로 제출된 점수를 A4 한 장씩 출력합니다. <b>마감된 학부</b>의 심사표만 출력되며, 전체 PDF는 마감된 학부를 모두 담습니다. ${locked?'':'<b>설정에서 학부별 또는 전체 마감을 하면</b> 출력할 수 있습니다.'} 미제출 심사표는 빠집니다.</p>
     <div class="formgrid">
       <div class="field"><label for="pdfJudge">평가위원별</label><div class="row"><select id="pdfJudge" class="grow">${judges().map(j=>`<option value="${esc(j.id)}">${esc(j.name)} · ${esc(j.division)} (${pagesForJudge(j.id).length}장)${divLocked(j.division)?'':' · 마감 전'}</option>`).join('')}</select>
         <button class="btn primary" type="button" data-pdf="judge" ${locked?'':'disabled'}>PDF</button></div></div>
@@ -1186,9 +1317,9 @@ function pdfSectionHtml(){
 function bindPdf(){
   document.querySelectorAll('[data-pdf]').forEach(b => b.onclick = () => {
     if (!DIVS.some(divLocked)) return;
-    if (b.dataset.pdf === 'judge'){ const j = judge($('#pdfJudge').value); if (!divLocked(j.division)){ toast(`${j.division}은(는) 아직 마감 전입니다`); return; } buildPdf(pagesForJudge(j.id), `2026_캡스톤디자인_심사표_${safeName(j.name)}.pdf`); }
-    else if (b.dataset.pdf === 'team'){ const t = S.teams[$('#pdfTeam').value]; if (!divLocked(t.division)){ toast(`${t.division}은(는) 아직 마감 전입니다`); return; } buildPdf(pagesForTeam(t.booth), `2026_캡스톤디자인_심사표_${t.booth}_${safeName(teamLabel(t))}.pdf`); }
-    else buildPdf(judges().filter(j => divLocked(j.division)).flatMap(j => pagesForJudge(j.id)), allLocked() ? '2026_캡스톤디자인_심사표_전체.pdf' : `2026_캡스톤디자인_심사표_${DIVS.filter(divLocked).map(safeName).join('_')}.pdf`);
+    if (b.dataset.pdf === 'judge'){ const j = judge($('#pdfJudge').value); if (!divLocked(j.division)){ toast(`${j.division}은(는) 아직 마감 전입니다`); return; } buildPdf(pagesForJudge(j.id), `${evYear()}_캡스톤디자인_심사표_${safeName(j.name)}.pdf`); }
+    else if (b.dataset.pdf === 'team'){ const t = S.teams[$('#pdfTeam').value]; if (!divLocked(t.division)){ toast(`${t.division}은(는) 아직 마감 전입니다`); return; } buildPdf(pagesForTeam(t.booth), `${evYear()}_캡스톤디자인_심사표_${t.booth}_${safeName(teamLabel(t))}.pdf`); }
+    else buildPdf(judges().filter(j => divLocked(j.division)).flatMap(j => pagesForJudge(j.id)), allLocked() ? `${evYear()}_캡스톤디자인_심사표_전체.pdf` : `${evYear()}_캡스톤디자인_심사표_${DIVS.filter(divLocked).map(safeName).join('_')}.pdf`);
   });
 }
 
@@ -1242,7 +1373,7 @@ function drawCert(ctx, seal, c){
   /* 글자를 x0~x1 사이에 고르게 배치 (상장·총장 줄, 항목 이름, 본문 양쪽 맞춤) */
   const spread = (text, x0, x1, y) => { const ch = [...text]; const ws = ch.map(k => ctx.measureText(k).width); const sum = ws.reduce((a,b)=>a+b,0);
     const gap = ch.length > 1 ? (P(x1) - P(x0) - sum) / (ch.length - 1) : 0; let x = P(x0); ch.forEach((k, i) => { ctx.fillText(k, x, P(y)); x += ws[i] + gap; }); };
-  font(15, 400); ctx.fillText(`제2026-${c.no}호`, P(112), P(99.7));
+  font(15, 400); ctx.fillText(`제${evYear()}-${c.no}호`, P(112), P(99.7));
   font(36, 800); spread('상장', 225.6, 369.5 - 0, 160.0);
   font(30, 800); ctx.fillText(certTitle(c.award), P(86), P(225.9));
   /* 항목: 15pt 고정, 길면 다음 줄로 (줄 간격 18pt), 아래 항목은 그만큼 내려감 */
@@ -1259,10 +1390,10 @@ function drawCert(ctx, seal, c){
   /* 본문: 원본과 같은 줄 나눔, 앞 두 줄은 양쪽 맞춤. 항목이 길어 내려오면 본문도 함께 내림 */
   const by = Math.max(436.2, y + 30); font(21.9, 700);
   const fitSpread = (t, x0, x1, yy) => { ctx.measureText(t).width > P(x1 - x0) ? (font(21.9 * P(x1 - x0) / ctx.measureText(t).width / CERT_S * CERT_S, 700), ctx.fillText(t, P(x0), P(yy)), font(21.9, 700)) : spread(t, x0, x1, yy); };
-  fitSpread('위 학생은 2026학년도 캡스톤디자인 경진대회', 98.7, 514.2, by);
+  fitSpread(`위 학생은 ${evYear()}학년도 캡스톤디자인 경진대회`, 98.7, 514.2, by);
   fitSpread('에서 상기와 같은 작품으로 우수한 성적을', 80.8, 514.2, by + 35.1);
   ctx.fillText('거두었으므로 이에 상장을 수여합니다.', P(80.8), P(by + 70.4));
-  font(18, 700); ctx.textAlign = 'center'; ctx.fillText('2026년 11월 20일', P(297.5), P(Math.max(617.7, by + 181.5))); ctx.textAlign = 'left';
+  font(18, 700); ctx.textAlign = 'center'; ctx.fillText(awardDateKo(), P(297.5), P(Math.max(617.7, by + 181.5))); ctx.textAlign = 'left';
   font(26, 800); spread('명지전문대학총장', 155.4, 439.7 - 0, 685.3);
   /* 직인: 원본 위치에 겹쳐 찍기 (글자가 비치도록 곱하기 합성) */
   if (seal){ ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(seal, P(395), P(652), P(83), P(80)); ctx.restore(); }
@@ -1290,7 +1421,7 @@ async function buildCertPdf(){
     }
     if (st) st.textContent = `${list.length}장 완성`;
     const tag = list.length === certAll().length ? '전체' : `${list.length}장`;
-    await S.downloads.save({ filename: `2026_캡스톤디자인_상장_${tag}.pdf`, data: new Blob([pdf.output('arraybuffer')]) });
+    await S.downloads.save({ filename: `${evYear()}_캡스톤디자인_상장_${tag}.pdf`, data: new Blob([pdf.output('arraybuffer')]) });
     toast(`상장 ${list.length}장을 저장했습니다`);
   } catch(e){ if (!(e && e.code === 'declined')) toast(e && e.message === 'bg' ? '상장 배경 이미지를 불러오지 못했습니다' : '상장 PDF를 만들지 못했습니다'); }
   finally { btns.forEach(b => b.disabled = !allLocked()); }
@@ -1302,7 +1433,7 @@ async function exportCertMerge(){
   const rows = [['번호','상장명','과제명','팀원','학과','지도교수','참여업체','부스','팀명','학부']];
   list.forEach(c => rows.push([c.no, certTitle(c.award), c.t.work||'', certPerson(c), c.t.dept||'', c.t.advisor||'', c.t.company||'', c.t.booth, teamLabel(c.t), c.t.division]));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), '상장');
-  try { await S.downloads.save({ filename:'2026_캡스톤디자인_상장_메일머지.xlsx', data: new Blob([XLSX.write(wb, {type:'array', bookType:'xlsx'})]) }); toast('메일머지용 엑셀을 저장했습니다'); }
+  try { await S.downloads.save({ filename:`${evYear()}_캡스톤디자인_상장_메일머지.xlsx`, data: new Blob([XLSX.write(wb, {type:'array', bookType:'xlsx'})]) }); toast('메일머지용 엑셀을 저장했습니다'); }
   catch(e){ if (!(e && e.code === 'declined')) toast('파일을 저장하지 못했습니다'); }
 }
 function certSectionHtml(){
@@ -1311,7 +1442,7 @@ function certSectionHtml(){
   const topTeams = new Set(all.filter(c => c.award === '대상').map(c => c.t.booth)).size;
   const topBad = topTeams > 1;
   return `<section class="divblock panel section"><div class="row"><h2 class="grow">상장 출력</h2><span class="chip ${locked?'ok':'warn'}">${locked?'성적 마감됨':'마감 전'}</span></div>
-    <p style="margin:0;color:var(--muted)">2026 상장 양식에 번호·상장명·작품명·성명·학과(지도교수)·참여업체를 넣어 학생 1명당 1장씩 출력합니다. 모든 글자는 고른 한 글꼴로 통일하며(기본 나눔명조), 상장명 30pt·입력값 15pt로 고정하고 길면 다음 줄로 나눕니다. 수상(안) 기준이며 ${locked?'':'<b>4개 학부가 모두 마감(또는 전체 마감)되면</b> 출력할 수 있습니다. 대상·상격 상향이 학부 간에 걸려 있기 때문입니다. '}번호는 팀마다 하나씩(같은 팀 학생은 같은 번호), 대상 → 금상 → 은상 → 동상 → 장려상, 학부, 순위 순으로 매겨집니다.</p>
+    <p style="margin:0;color:var(--muted)">상장 양식에 번호·상장명·작품명·성명·학과(지도교수)·참여업체를 넣어 학생 1명당 1장씩 출력합니다. 모든 글자는 고른 한 글꼴로 통일하며(기본 나눔명조), 상장명 30pt·입력값 15pt로 고정하고 길면 다음 줄로 나눕니다. 수상(안) 기준이며 ${locked?'':'<b>4개 학부가 모두 마감(또는 전체 마감)되면</b> 출력할 수 있습니다. 대상·상격 상향이 학부 간에 걸려 있기 때문입니다. '}번호는 팀마다 하나씩(같은 팀 학생은 같은 번호), 대상 → 금상 → 은상 → 동상 → 장려상, 학부, 순위 순으로 매겨집니다.</p>
     <div class="formgrid">
       <div class="field"><label>상격 (상장명 표기)</label><div style="display:flex;flex-direction:column;gap:6px">${CERT_ORDER.map(a => `<div class="row" style="gap:8px"><label class="check" style="min-width:150px"><input type="checkbox" data-certaw value="${a}" checked> ${a} <span class="num" style="color:var(--muted);font-size:13px">${cnt(a)}</span></label><input type="text" data-certname="${a}" value="${a}" aria-label="${a} 상장명 표기" style="max-width:160px"></div>`).join('')}</div></div>
       <div class="field"><label for="certDiv">학부</label><select id="certDiv"><option value="">전체 학부</option>${DIVS.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('')}</select>
@@ -1335,6 +1466,12 @@ function renderSetup(app){
   const js = judges();
   app.innerHTML = `
     <h1>설정</h1><p class="lead">심사위원과 부스 명단을 관리합니다. 바꾼 내용은 심사 화면에 바로 반영됩니다.</p>
+    <section class="panel section"><h2>행사 정보</h2>
+      <p style="margin:0;color:var(--muted)">화면 제목, 심사표·상장, 내려받는 파일 이름에 들어갑니다. 해마다 행사 전에 바꾸세요. 상장 번호는 <b>제${evYear()}-073호</b>처럼 학년도로 시작합니다.</p>
+      <div class="row" style="align-items:flex-end;gap:12px">
+        <div class="field"><label for="evYear">학년도</label><input type="number" id="evYear" min="2020" max="2100" value="${evYear()}" style="width:120px;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg)"></div>
+        <div class="field"><label for="evDate">시상일 (상장 날짜)</label><input type="date" id="evDate" value="${evAwardDate()}" style="font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg)"></div>
+        <button class="btn primary" id="saveEvent" type="button">저장</button></div></section>
     <section class="panel section"><div class="row"><h2 class="grow">심사 마감</h2><span class="chip ${allLocked()?'ok':DIVS.some(divLocked)?'todo':'warn'}">${esc(lockLabel())}</span></div>
       <p style="margin:0;color:var(--muted)">학부별로 먼저 마감하거나 전체를 한 번에 마감할 수 있습니다. 마감된 학부의 위원은 점수를 새로 제출하거나 고칠 수 없고, 그 학부의 심사표 PDF를 출력할 수 있습니다. <b>상장은 4개 학부가 모두 마감된 뒤</b> 출력됩니다. 버튼을 누르면 확인 버튼으로 바뀌고, 한 번 더 눌러야 바뀝니다.</p>
       <div class="tablebox"><table><thead><tr><th>학부</th><th class="n">제출</th><th>상태</th><th>학부 마감</th></tr></thead><tbody>
@@ -1370,6 +1507,9 @@ function renderSetup(app){
       <p style="margin:0;color:var(--muted)">심사표의 작품명 옆에 보이는 포스터 이미지입니다. 파일 이름의 숫자가 <b>부스 번호</b>입니다(예: <b>01.jpg</b> → 부스 01). 여러 장을 한 번에 고를 수 있고, 같은 번호는 새 이미지로 바뀝니다. 이미지는 비공개 저장소(team-posters)에 저장되고, 고정 공개 주소 없이 심사 화면에서 6시간짜리 임시 주소로만 보입니다.</p>
       <div class="row"><input type="file" id="posterFiles" accept="image/jpeg" multiple><button class="btn primary" id="posterUp" type="button">올리기</button><span id="posterStatus" style="color:var(--muted);font-size:13px"></span></div>
       ${SB.posterUrls ? (() => { const miss = Object.keys(S.teams).sort().filter(b => !SB.posterUrls[String(parseInt(b,10)).padStart(2,'0') + '.jpg']); return miss.length ? `<p style="margin:0;font-size:13px;color:var(--warn)">이미지 없는 부스: ${miss.map(esc).join(', ')}</p>` : ''; })() : ''}</section>` : ''}
+    ${window.SB ? `<section class="panel section"><div class="row"><h2 class="grow">위원 로그인 잠금</h2><button class="btn" id="lockCheck" type="button">잠금 확인</button></div>
+      <p style="margin:0;color:var(--muted)">전화번호를 틀리면 <b>그 기기만</b> 10분에 5회에서 잠깁니다. 같은 위원 이름으로 여러 기기에서 10분에 30회 틀리면 그 위원 로그인이 모두 잠기니, 위원이 들어오지 못하면 여기서 확인하고 해제하세요.</p>
+      <div id="lockOut"></div></section>` : ''}
     <section class="panel section"><h2>심사위원 · 본인 인증</h2>
       <p style="margin:0;color:var(--muted)">위원은 <b>성명과 전화번호</b>를 입력해야 심사 화면에 들어갈 수 있습니다. 전화번호는 저장하지 않고 확인용 암호값(해시)만 저장하므로, 등록 후에는 번호가 화면에 다시 보이지 않습니다. 바꾸려면 새 번호를 넣고 저장하세요. 성명을 바꾸면 위원도 바뀐 성명으로 인증해야 합니다.</p>
       <div class="tablebox"><table><thead><tr><th>학부</th><th>성명</th><th>소속</th><th>전화번호 (인증용)</th><th>상태</th></tr></thead><tbody>
@@ -1438,6 +1578,23 @@ function renderSetup(app){
       await SB.loadPosters(true); render();
     };
   }
+  if (window.SB && $('#lockCheck')) {
+    const showLocks = async () => { const out = $('#lockOut'); out.innerHTML = '<p style="color:var(--muted)">확인 중…</p>';
+      let rows; try { rows = await SB.loginLocks(); } catch(e){ out.innerHTML = `<p style="color:var(--bad)">${esc(e.message)}</p>`; return; }
+      out.innerHTML = `<div class="tablebox"><table><thead><tr><th>학부</th><th>평가위원</th><th class="n">최근 10분 실패</th><th class="n">기기 수</th><th>상태</th><th>해제</th></tr></thead><tbody>
+        ${rows.map(r => `<tr><td>${esc(r.division||'')}</td><td>${esc(r.name)}</td><td class="n">${r.fails}</td><td class="n">${r.devices}</td>
+          <td>${r.locked ? '<span class="chip bad">전체 잠김</span>' : r.device_locked ? '<span class="chip warn">일부 기기 잠김</span>' : '<span class="chip ok">정상</span>'}</td>
+          <td><button class="btn" type="button" data-unlock="${esc(r.judge_id)}" ${r.fails ? '' : 'disabled'}>잠금 해제</button></td></tr>`).join('')}</tbody></table></div>`;
+      out.querySelectorAll('[data-unlock]').forEach(b => b.onclick = async () => { b.disabled = true;
+        try { const n = await SB.unlockJudge(b.dataset.unlock); toast(`잠금을 해제했습니다 (실패 기록 ${n}건 삭제)`); } catch(e){ toast('해제하지 못했습니다: ' + e.message); }
+        showLocks(); }); };
+    $('#lockCheck').onclick = showLocks;
+  }
+  $('#saveEvent').onclick = async () => {
+    const y = parseInt($('#evYear').value, 10), dt = $('#evDate').value;
+    if (!(y >= 2020 && y <= 2100) || !/^\d{4}-\d{2}-\d{2}$/.test(dt)){ toast('학년도와 시상일을 확인하세요'); return; }
+    try { await S.db.doc('config/main').update({year: y, awardDate: dt}); toast(`${y}학년도 · 시상일 ${dt}로 저장했습니다`); } catch(e){ toast('저장하지 못했습니다' + (e && e.message ? ': ' + e.message : '')); }
+  };
   $('#saveQuota').onclick = async () => {
     const {quota, bad, tops} = checkQuota();
     if (tops > 1){ toast('대상은 전체 1팀만 지정할 수 있습니다'); return; }
