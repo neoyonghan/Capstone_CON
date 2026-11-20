@@ -1,6 +1,8 @@
 <title>캡스톤디자인 온라인 평가시스템</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
+<style>@font-face{font-family:"GmarketSans";src:url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff") format("woff");font-weight:700;font-style:normal;font-display:swap}</style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Nanum+Myeongjo:wght@400;700;800&family=Gowun+Batang:wght@400;700&family=Song+Myung&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <style>
 /* Layout: sticky top bar with three views (심사 입력 · 집계 · 설정); the score sheet mirrors the paper form's 4 areas x 10 items */
@@ -9,7 +11,8 @@
   --fg:#152036; --muted:#5B6782; --navy:#0B2A5B; --accent:#1E5BD8; --accent-ink:#FFFFFF;
   --t10:#0B6E4F; --t10bg:#DDF3EA; --t9:#1E5BD8; --t9bg:#E2EBFC; --t7:#8A5A00; --t7bg:#FBEFD6;
   --ok:#0B6E4F; --okbg:#DDF3EA; --warn:#9A4B00; --warnbg:#FDEBD5; --bad:#B42318; --badbg:#FDE4E1;
-  --font:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --font:"Pretendard Variable",Pretendard,system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --title:"GmarketSans","Pretendard Variable",Pretendard,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; --title-w:700;
   --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   --r:10px;
 }
@@ -33,14 +36,14 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background
 .top .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding-block:12px}
 .brand{display:flex;flex-direction:column;min-width:0}
 .brand small{font-size:12px;color:var(--muted);letter-spacing:.04em}
-.brand b{font-size:17px;color:var(--navy);text-wrap:balance}
+.brand b{font-size:17px;color:var(--navy);text-wrap:balance;font-family:var(--title);font-weight:var(--title-w)}
 nav.tabs{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
 nav.tabs a{padding:8px 14px;border-radius:999px;color:var(--muted);text-decoration:none;font-weight:600;font-size:14px}
 nav.tabs a[aria-current="page"]{background:var(--navy);color:var(--surface)}
 nav.tabs a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 main{padding-block:24px 64px}
-h1{font-size:22px;margin:0 0 4px;text-wrap:balance}
-h2{font-size:17px;margin:0;text-wrap:balance}
+h1{font-size:22px;margin:0 0 4px;text-wrap:balance;font-family:var(--title);font-weight:var(--title-w)}
+h2{font-size:17px;margin:0;text-wrap:balance;font-family:var(--title);font-weight:var(--title-w)}
 .lead{color:var(--muted);margin:0 0 20px;max-width:65ch}
 .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
 .grow{flex:1 1 auto;min-width:0}
