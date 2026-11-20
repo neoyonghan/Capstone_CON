@@ -210,13 +210,14 @@ function render(){
 
 /* ---------- judge view ---------- */
 function renderJudge(app){
-  const locked = S.config && S.config.locked;
+  let locked = !!(S.config && S.config.locked);
   if (!judges().length || !Object.keys(S.teams).length){
     app.innerHTML = '<div class="panel empty">심사위원과 부스 명단이 아직 등록되지 않았습니다.' + (S.canEdit ? ' <a href="#setup">설정</a>에서 등록하세요.' : ' 운영본부에 문의하세요.') + '</div>';
     return;
   }
   const j = judge(S.judgeId);
   if (!j || !authed(j)) return renderPicker(app);
+  locked = divLocked(j.division);   /* 학부별 또는 전체 마감 */
   if (S.booth && S.teams[S.booth]) return renderSheet(app, j, S.teams[S.booth], locked);
   const list = teamsOf(j.division);
   const done = list.filter(t => scoreOf(j.id, t.booth)).length;
@@ -386,12 +387,12 @@ function refreshSheet(){
   const c=$('#cnt');
   if (d.absent){ $('#tot').textContent = ABSENT_SCORE * 10; c.textContent = '미참여'; c.className = 'chip num ok'; }
   else { $('#tot').textContent = filled ? sumItems(d.items) : '–'; c.textContent = filled+'/10 항목'; c.className = 'chip num ' + (filled===10?'ok':'todo'); }
-  $('#save').disabled = !((d.absent || filled===10) && d.confirm) || !!(S.config && S.config.locked);
+  $('#save').disabled = !((d.absent || filled===10) && d.confirm) || divLocked((judge(S.judgeId)||{}).division);
 }
 
 async function saveScore(j, t){
   const d = S.draft; const btn = $('#save');
-  if (S.config && S.config.locked){ toast('심사가 마감되어 제출할 수 없습니다'); return render(); }
+  if (divLocked(j.division)){ toast('이 학부 심사가 마감되어 제출할 수 없습니다'); return render(); }
   if (!authed(judge(j.id))){ toast('로그인이 풀렸습니다. 다시 로그인한 뒤 제출하세요'); S.booth = null; return render(); }
   if (!d.absent && d.items.some(v => !(v >= 5 && v <= 10))){ toast('모든 항목에 점수를 선택하세요'); return; }
   /* 동시 저장 감지: 화면을 연 뒤 다른 기기에서 같은 심사표가 저장됐으면 한 번 더 눌러야 덮어씀 */
@@ -434,6 +435,11 @@ const QUOTA_DEFAULT = {
   '경영·휴먼라이프학부':{금상:1,은상:0,동상:2,장려상:7},
   '예술·건강학부':{금상:1,은상:1,동상:3,장려상:17}};
 const GAP_LIMIT = 15;
+/* 마감: 전체 마감(config.locked) 또는 학부별 마감(config.lockedDivs 배열) */
+function lockedDivs(){ return (S.config && Array.isArray(S.config.lockedDivs)) ? S.config.lockedDivs : []; }
+function divLocked(div){ return !!(S.config && (S.config.locked || lockedDivs().includes(div))); }
+function allLocked(){ return !!(S.config && (S.config.locked || DIVS.every(divLocked))); }
+function lockLabel(){ if (allLocked()) return '전체 마감'; const n = DIVS.filter(divLocked).length; return n ? `학부 ${n}/${DIVS.length} 마감` : '입력 중'; }
 const ABSENT_SCORE = 5; /* 미참여 팀: 전 항목 5점 자동 처리 */
 const ALL_AWARDS = ['대상', ...AWARDS];
 function quotaOf(div){ const q = (S.config && S.config.quota && S.config.quota[div]) || QUOTA_DEFAULT[div] || {}; return ALL_AWARDS.reduce((o,a)=>(o[a]=Number(q[a])||0,o),{}); }
@@ -518,7 +524,7 @@ function renderResultsInner(app){
       <p class="lead" style="margin:0">평균은 제출된 위원 점수로 계산합니다. 평균이 같으면 기술성 및 완성도 소계, 그다음 창의성 및 기획성 소계가 높은 팀이 앞섭니다(대상 포함). 위원 모두가 미참여로 처리한 팀은 순위·수상·상장에서 제외됩니다.</p></div>
       <button class="btn primary" id="xlsx" type="button">엑셀로 받기</button></div>
     <div class="stats" style="margin:12px 0 20px"><span>제출 <b class="num">${got}</b> / ${all}장</span>
-      <span>마감 상태 <b>${S.config.locked?'마감됨':'입력 중'}</b></span>
+      <span>마감 상태 <b>${esc(lockLabel())}</b></span>
       <span>점수 차 ${GAP_LIMIT}점 이상 <b class="num">${gaps.length}</b>팀</span>
       ${(S.badScores||[]).length ? `<span class="chip bad">형식 오류로 집계에서 뺀 점수 ${S.badScores.length}건: ${esc(S.badScores.slice(0,5).join(', '))}${S.badScores.length>5?' 외':''}</span>` : ''}</div>
     <section class="divblock"><h2>학부별 수상 현황</h2>
@@ -760,29 +766,29 @@ async function buildPdf(pages, filename){
     await S.downloads.save({ filename, data: new Blob([pdf.output('arraybuffer')]) });
     toast(`${pages.length}장짜리 PDF를 저장했습니다`);
   } catch(e){ if (!(e && e.code === 'declined')) toast('PDF를 만들지 못했습니다'); }
-  finally { btns.forEach(b => b.disabled = !(S.config && S.config.locked)); }
+  finally { btns.forEach(b => b.disabled = !DIVS.some(divLocked)); }
 }
 function pagesForJudge(jid){ const j = judge(jid); if (!j) return []; return teamsOf(j.division).map(t => ({t, j, s: scoreOf(j.id, t.booth)})).filter(p => p.s); }
 function pagesForTeam(booth){ const t = S.teams[booth]; if (!t) return []; return judges().filter(j => j.division === t.division).map(j => ({t, j, s: scoreOf(j.id, booth)})).filter(p => p.s); }
 function safeName(x){ return String(x||'').replace(/[\\/:*?"<>|]/g,'').slice(0,60); }
 function pdfSectionHtml(){
-  const locked = S.config && S.config.locked;
-  return `<section class="divblock panel section"><div class="row"><h2 class="grow">심사표 PDF 출력</h2><span class="chip ${locked?'ok':'warn'}">${locked?'성적 마감됨':'마감 전'}</span></div>
-    <p style="margin:0;color:var(--muted)">2025학년도 서식을 그대로 쓴 '2026학년도 캡스톤디자인 경진대회 심사표'로 제출된 점수를 A4 한 장씩 출력합니다. ${locked?'':'<b>설정에서 심사를 마감하면</b> 출력할 수 있습니다.'} 미제출 심사표는 빠집니다.</p>
+  const locked = DIVS.some(divLocked); const all = allLocked();
+  return `<section class="divblock panel section"><div class="row"><h2 class="grow">심사표 PDF 출력</h2><span class="chip ${all?'ok':locked?'todo':'warn'}">${esc(lockLabel())}</span></div>
+    <p style="margin:0;color:var(--muted)">2025학년도 서식을 그대로 쓴 '2026학년도 캡스톤디자인 경진대회 심사표'로 제출된 점수를 A4 한 장씩 출력합니다. <b>마감된 학부</b>의 심사표만 출력되며, 전체 PDF는 마감된 학부를 모두 담습니다. ${locked?'':'<b>설정에서 학부별 또는 전체 마감을 하면</b> 출력할 수 있습니다.'} 미제출 심사표는 빠집니다.</p>
     <div class="formgrid">
-      <div class="field"><label for="pdfJudge">평가위원별</label><div class="row"><select id="pdfJudge" class="grow">${judges().map(j=>`<option value="${esc(j.id)}">${esc(j.name)} · ${esc(j.division)} (${pagesForJudge(j.id).length}장)</option>`).join('')}</select>
+      <div class="field"><label for="pdfJudge">평가위원별</label><div class="row"><select id="pdfJudge" class="grow">${judges().map(j=>`<option value="${esc(j.id)}">${esc(j.name)} · ${esc(j.division)} (${pagesForJudge(j.id).length}장)${divLocked(j.division)?'':' · 마감 전'}</option>`).join('')}</select>
         <button class="btn primary" type="button" data-pdf="judge" ${locked?'':'disabled'}>PDF</button></div></div>
-      <div class="field"><label for="pdfTeam">평가팀별</label><div class="row"><select id="pdfTeam" class="grow">${Object.values(S.teams).sort((a,b)=>a.booth.localeCompare(b.booth)).map(t=>`<option value="${esc(t.booth)}">${esc(t.booth)} ${esc(teamLabel(t))} (${pagesForTeam(t.booth).length}장)</option>`).join('')}</select>
+      <div class="field"><label for="pdfTeam">평가팀별</label><div class="row"><select id="pdfTeam" class="grow">${Object.values(S.teams).sort((a,b)=>a.booth.localeCompare(b.booth)).map(t=>`<option value="${esc(t.booth)}">${esc(t.booth)} ${esc(teamLabel(t))} (${pagesForTeam(t.booth).length}장)${divLocked(t.division)?'':' · 마감 전'}</option>`).join('')}</select>
         <button class="btn primary" type="button" data-pdf="team" ${locked?'':'disabled'}>PDF</button></div></div>
-      <div class="field"><label>전체 (위원 → 부스 순)</label><div class="row"><button class="btn" type="button" data-pdf="all" ${locked?'':'disabled'}>전체 PDF (${Object.keys(S.scores).length}장)</button><span id="pdfStatus" style="color:var(--muted);font-size:13px"></span></div></div>
+      <div class="field"><label>전체 (위원 → 부스 순)</label><div class="row"><button class="btn" type="button" data-pdf="all" ${locked?'':'disabled'}>${all?'전체':'마감 학부'} PDF (${judges().filter(j=>divLocked(j.division)).reduce((n,j)=>n+pagesForJudge(j.id).length,0)}장)</button><span id="pdfStatus" style="color:var(--muted);font-size:13px"></span></div></div>
     </div></section>`;
 }
 function bindPdf(){
   document.querySelectorAll('[data-pdf]').forEach(b => b.onclick = () => {
-    if (!(S.config && S.config.locked)) return;
-    if (b.dataset.pdf === 'judge'){ const j = judge($('#pdfJudge').value); buildPdf(pagesForJudge(j.id), `2026_캡스톤디자인_심사표_${safeName(j.name)}.pdf`); }
-    else if (b.dataset.pdf === 'team'){ const t = S.teams[$('#pdfTeam').value]; buildPdf(pagesForTeam(t.booth), `2026_캡스톤디자인_심사표_${t.booth}_${safeName(teamLabel(t))}.pdf`); }
-    else buildPdf(judges().flatMap(j => pagesForJudge(j.id)), '2026_캡스톤디자인_심사표_전체.pdf');
+    if (!DIVS.some(divLocked)) return;
+    if (b.dataset.pdf === 'judge'){ const j = judge($('#pdfJudge').value); if (!divLocked(j.division)){ toast(`${j.division}은(는) 아직 마감 전입니다`); return; } buildPdf(pagesForJudge(j.id), `2026_캡스톤디자인_심사표_${safeName(j.name)}.pdf`); }
+    else if (b.dataset.pdf === 'team'){ const t = S.teams[$('#pdfTeam').value]; if (!divLocked(t.division)){ toast(`${t.division}은(는) 아직 마감 전입니다`); return; } buildPdf(pagesForTeam(t.booth), `2026_캡스톤디자인_심사표_${t.booth}_${safeName(teamLabel(t))}.pdf`); }
+    else buildPdf(judges().filter(j => divLocked(j.division)).flatMap(j => pagesForJudge(j.id)), allLocked() ? '2026_캡스톤디자인_심사표_전체.pdf' : `2026_캡스톤디자인_심사표_${DIVS.filter(divLocked).map(safeName).join('_')}.pdf`);
   });
 }
 
@@ -852,7 +858,7 @@ function drawCert(ctx, seal, c){
   if (seal){ ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.drawImage(seal, P(395), P(652), P(83), P(80)); ctx.restore(); }
 }
 async function buildCertPdf(){
-  if (!(S.config && S.config.locked)) return;
+  if (!allLocked()) return;
   if (!window.jspdf || !window.jspdf.jsPDF){ toast('PDF 도구를 불러오지 못했습니다'); return; }
   if (!S.downloads){ toast('이 화면에서는 파일을 받을 수 없습니다'); return; }
   const list = certFilter(certAll());
@@ -876,7 +882,7 @@ async function buildCertPdf(){
     await S.downloads.save({ filename: `2026_캡스톤디자인_상장_${tag}.pdf`, data: new Blob([pdf.output('arraybuffer')]) });
     toast(`상장 ${list.length}장을 저장했습니다`);
   } catch(e){ if (!(e && e.code === 'declined')) toast(e && e.message === 'bg' ? '상장 배경 이미지를 불러오지 못했습니다' : '상장 PDF를 만들지 못했습니다'); }
-  finally { btns.forEach(b => b.disabled = !(S.config && S.config.locked)); }
+  finally { btns.forEach(b => b.disabled = !allLocked()); }
 }
 async function exportCertMerge(){
   if (!window.XLSX || !S.downloads){ toast('이 화면에서는 파일을 받을 수 없습니다'); return; }
@@ -889,12 +895,12 @@ async function exportCertMerge(){
   catch(e){ if (!(e && e.code === 'declined')) toast('파일을 저장하지 못했습니다'); }
 }
 function certSectionHtml(){
-  const locked = S.config && S.config.locked; const all = certAll(); 
+  const locked = allLocked(); const all = certAll(); 
   const cnt = a => { const sel = all.filter(c => c.award === a); const tm = new Set(sel.map(c => c.t.booth)).size; return `${tm}팀 · ${sel.length}장`; };
   const topTeams = new Set(all.filter(c => c.award === '대상').map(c => c.t.booth)).size;
   const topBad = topTeams > 1;
   return `<section class="divblock panel section"><div class="row"><h2 class="grow">상장 출력</h2><span class="chip ${locked?'ok':'warn'}">${locked?'성적 마감됨':'마감 전'}</span></div>
-    <p style="margin:0;color:var(--muted)">2026 상장 양식에 번호·상장명·작품명·성명·학과(지도교수)·참여업체를 넣어 학생 1명당 1장씩 출력합니다. 모든 글자는 고른 한 글꼴로 통일하며(기본 나눔명조), 상장명 30pt·입력값 15pt로 고정하고 길면 다음 줄로 나눕니다. 수상(안) 기준이며 ${locked?'':'<b>심사를 마감하면</b> 출력할 수 있습니다. '}번호는 팀마다 하나씩(같은 팀 학생은 같은 번호), 대상 → 금상 → 은상 → 동상 → 장려상, 학부, 순위 순으로 매겨집니다.</p>
+    <p style="margin:0;color:var(--muted)">2026 상장 양식에 번호·상장명·작품명·성명·학과(지도교수)·참여업체를 넣어 학생 1명당 1장씩 출력합니다. 모든 글자는 고른 한 글꼴로 통일하며(기본 나눔명조), 상장명 30pt·입력값 15pt로 고정하고 길면 다음 줄로 나눕니다. 수상(안) 기준이며 ${locked?'':'<b>4개 학부가 모두 마감(또는 전체 마감)되면</b> 출력할 수 있습니다. 대상·상격 상향이 학부 간에 걸려 있기 때문입니다. '}번호는 팀마다 하나씩(같은 팀 학생은 같은 번호), 대상 → 금상 → 은상 → 동상 → 장려상, 학부, 순위 순으로 매겨집니다.</p>
     <div class="formgrid">
       <div class="field"><label>상격 (상장명 표기)</label><div style="display:flex;flex-direction:column;gap:6px">${CERT_ORDER.map(a => `<div class="row" style="gap:8px"><label class="check" style="min-width:150px"><input type="checkbox" data-certaw value="${a}" checked> ${a} <span class="num" style="color:var(--muted);font-size:13px">${cnt(a)}</span></label><input type="text" data-certname="${a}" value="${a}" aria-label="${a} 상장명 표기" style="max-width:160px"></div>`).join('')}</div></div>
       <div class="field"><label for="certDiv">학부</label><select id="certDiv"><option value="">전체 학부</option>${DIVS.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('')}</select>
@@ -918,9 +924,17 @@ function renderSetup(app){
   const js = judges();
   app.innerHTML = `
     <h1>설정</h1><p class="lead">심사위원과 부스 명단을 관리합니다. 바꾼 내용은 심사 화면에 바로 반영됩니다.</p>
-    <section class="panel section"><div class="row"><h2 class="grow">심사 마감</h2>
-      <button class="btn ${S.config.locked?'':'primary'}" id="lock" type="button">${S.config.locked?'마감 해제':'심사 마감'}</button></div>
-      <p style="margin:0;color:var(--muted)">마감하면 위원들이 점수를 새로 제출하거나 고칠 수 없습니다. 현재 <b>${S.config.locked?'마감됨':'입력 중'}</b>.</p></section>
+    <section class="panel section"><div class="row"><h2 class="grow">심사 마감</h2><span class="chip ${allLocked()?'ok':DIVS.some(divLocked)?'todo':'warn'}">${esc(lockLabel())}</span></div>
+      <p style="margin:0;color:var(--muted)">학부별로 먼저 마감하거나 전체를 한 번에 마감할 수 있습니다. 마감된 학부의 위원은 점수를 새로 제출하거나 고칠 수 없고, 그 학부의 심사표 PDF를 출력할 수 있습니다. <b>상장은 4개 학부가 모두 마감된 뒤</b> 출력됩니다. 버튼을 누르면 확인 버튼으로 바뀌고, 한 번 더 눌러야 바뀝니다.</p>
+      <div class="tablebox"><table><thead><tr><th>학부</th><th class="n">제출</th><th>상태</th><th>학부 마감</th></tr></thead><tbody>
+      ${DIVS.map((div,di) => { const js2 = judges().filter(j=>j.division===div); const need = js2.length*teamsOf(div).length; const got = js2.reduce((a,j)=>a+teamsOf(div).filter(t=>scoreOf(j.id,t.booth)).length,0);
+        const on = divLocked(div); const byAll = !!S.config.locked;
+        return `<tr><td>${esc(div)}</td><td class="n"><span class="chip ${got===need&&need?'ok':'todo'} num">${got}/${need}</span></td>
+          <td>${on?`<span class="chip ok">마감${byAll?' (전체 마감)':''}</span>`:'<span class="chip warn">입력 중</span>'}</td>
+          <td><button class="btn ${on?'':'primary'}" type="button" data-divlock="${di}" ${byAll?'disabled title="전체 마감 중에는 학부별로 바꿀 수 없습니다"':''}>${on?'마감 해제':'학부 마감'}</button></td></tr>`; }).join('')}
+      </tbody></table></div>
+      <div class="row"><button class="btn ${S.config.locked?'':'primary'}" id="lock" type="button">${S.config.locked||allLocked()?'전체 마감 해제':'전체 마감'}</button>
+        <span style="color:var(--muted);font-size:13px">${S.config.locked||allLocked()?'전체 마감 해제는 모든 학부를 다시 입력 중으로 돌립니다.':'전체 마감은 4개 학부를 한 번에 마감합니다.'}</span></div></section>
     <section class="panel section"><h2>학부별 수상 정원</h2>
       <p style="margin:0"><span class="chip ${isManualTop()?'ok':'todo'}" id="qmode">${isManualTop()?'지정 모드':'자동 모드'}</span></p>
       <ul style="margin:0;padding-left:20px;color:var(--muted);line-height:1.7">
@@ -935,12 +949,12 @@ function renderSetup(app){
       </tbody></table></div>
       <div class="row"><button class="btn primary" id="saveQuota" type="button">정원 저장</button><span id="qtotal" style="color:var(--muted)"></span></div></section>
     <section class="panel section"><h2>위원별 점수 초기화</h2>
-      <p style="margin:0;color:var(--muted)">선택한 위원이 제출한 점수를 모두 지웁니다. 지운 점수는 되살릴 수 없으니 <b>엑셀로 받기</b>로 먼저 보관하세요. 버튼을 한 번 누르면 확인 버튼으로 바뀌고, 5초 안에 한 번 더 눌러야 지워집니다. ${S.config.locked?'<b>심사가 마감된 상태에서는 초기화할 수 없습니다.</b>':''}</p>
+      <p style="margin:0;color:var(--muted)">선택한 위원이 제출한 점수를 모두 지웁니다. 지운 점수는 되살릴 수 없으니 <b>엑셀로 받기</b>로 먼저 보관하세요. 버튼을 한 번 누르면 확인 버튼으로 바뀌고, 5초 안에 한 번 더 눌러야 지워집니다. ${DIVS.some(divLocked)?'<b>마감된 학부의 위원 점수와 전체 초기화는 막혀 있습니다.</b>':''}</p>
       <div class="tablebox"><table><thead><tr><th>학부</th><th>평가위원</th><th class="n">제출</th><th>초기화</th></tr></thead><tbody>
       ${js.map(j=>{ const n = Object.keys(S.scores).filter(k=>k.startsWith(j.id+'__')).length;
-        return `<tr><td>${esc(j.division)}</td><td>${esc(j.name)}</td><td class="n">${n}건</td><td><button class="btn" type="button" data-reset="${esc(j.id)}" ${n&&!S.config.locked?'':'disabled'}>점수 초기화</button></td></tr>`; }).join('')}
+        return `<tr><td>${esc(j.division)}</td><td>${esc(j.name)}</td><td class="n">${n}건</td><td><button class="btn" type="button" data-reset="${esc(j.id)}" ${n&&!divLocked(j.division)?'':'disabled'}>점수 초기화</button></td></tr>`; }).join('')}
       </tbody></table></div>
-      <div class="row"><button class="btn" type="button" data-reset="*" ${Object.keys(S.scores).length&&!S.config.locked?'':'disabled'}>전체 위원 점수 초기화 (${Object.keys(S.scores).length}건)</button><span id="resetStatus" style="color:var(--muted);font-size:13px"></span></div></section>
+      <div class="row"><button class="btn" type="button" data-reset="*" ${Object.keys(S.scores).length&&!DIVS.some(divLocked)?'':'disabled'}>전체 위원 점수 초기화 (${Object.keys(S.scores).length}건)</button><span id="resetStatus" style="color:var(--muted);font-size:13px"></span></div></section>
     <section class="panel section"><h2>심사위원 · 본인 인증</h2>
       <p style="margin:0;color:var(--muted)">위원은 <b>성명과 전화번호</b>를 입력해야 심사 화면에 들어갈 수 있습니다. 전화번호는 저장하지 않고 확인용 암호값(해시)만 저장하므로, 등록 후에는 번호가 화면에 다시 보이지 않습니다. 바꾸려면 새 번호를 넣고 저장하세요. 성명을 바꾸면 위원도 바뀐 성명으로 인증해야 합니다.</p>
       <div class="tablebox"><table><thead><tr><th>학부</th><th>성명</th><th>소속</th><th>전화번호 (인증용)</th><th>상태</th></tr></thead><tbody>
@@ -961,12 +975,23 @@ function renderSetup(app){
         <td><input type="text" id="tc${esc(t.booth)}" data-b="${esc(t.booth)}" data-f="company" value="${esc(t.company||'')}" aria-label="부스 ${esc(t.booth)} 참여업체"></td>
         <td><input type="text" id="tm${esc(t.booth)}" data-b="${esc(t.booth)}" data-f="memberNames" value="${esc((t.memberNames||[]).join(', '))}" style="min-width:240px" aria-label="부스 ${esc(t.booth)} 팀원"></td></tr>`).join('')}
       </tbody></table></div><p style="margin:0;color:var(--muted);font-size:13px">칸에서 나가면 자동 저장됩니다.</p></section>`;
-  let lockArmed = false;
-  $('#lock').onclick = async () => { const next = !S.config.locked;
-    /* 미제출 심사표가 있으면 바로 마감하지 않고 한 번 더 누르게 함 */
-    if (next && !lockArmed){ const need = judges().reduce((a,j)=>a+teamsOf(j.division).length,0); const miss = need - judges().reduce((a,j)=>a+teamsOf(j.division).filter(t=>scoreOf(j.id,t.booth)).length,0);
-      if (miss > 0){ lockArmed = true; $('#lock').textContent = `미제출 ${miss}장 · 그래도 마감`; toast(`아직 제출되지 않은 심사표가 ${miss}장 있습니다. 미제출 팀은 수상에서 빠집니다. 그래도 마감하려면 한 번 더 누르세요`); return; } }
-    try { await S.db.doc('config/main').update({locked: next}); toast(next?'심사를 마감했습니다':'마감을 해제했습니다'); } catch(e){ toast('바꾸지 못했습니다'); } };
+    /* 마감: 학부별(lockedDivs) · 전체(locked). 모두 두 번 눌러 확정 */
+  const missOf = divs => divs.reduce((m, div) => m + judges().filter(j=>j.division===div).reduce((a,j)=>a+teamsOf(div).filter(t=>!scoreOf(j.id,t.booth)).length,0), 0);
+  const arm = (btn, text, msg) => { if (btn.dataset.armed){ return true; } btn.dataset.armed = '1'; btn.textContent = text; toast(msg); setTimeout(() => { if (btn.isConnected){ delete btn.dataset.armed; render(); } }, 5000); return false; };
+  app.querySelectorAll('[data-divlock]').forEach(btn => btn.onclick = async () => {
+    const div = DIVS[+btn.dataset.divlock]; if (S.config.locked) return;
+    const on = lockedDivs().includes(div);
+    if (!on){ const miss = missOf([div]);
+      if (!arm(btn, miss ? `미제출 ${miss}장 · 그래도 마감` : `${div} 마감 확인`, miss ? `${div}에 아직 제출되지 않은 심사표가 ${miss}장 있습니다. 미제출 팀은 수상에서 빠집니다. 그래도 마감하려면 한 번 더 누르세요` : `한 번 더 누르면 ${div}을(를) 마감합니다`)) return; }
+    else if (!arm(btn, '해제 확인', `한 번 더 누르면 ${div} 마감을 해제합니다`)) return;
+    const next = on ? lockedDivs().filter(d => d !== div) : [...new Set([...lockedDivs(), div])];
+    try { await S.db.doc('config/main').update({lockedDivs: next}); toast(on ? `${div} 마감을 해제했습니다` : `${div}을(를) 마감했습니다`); } catch(e){ toast('바꾸지 못했습니다'); }
+  });
+  $('#lock').onclick = async () => { const btn = $('#lock'); const release = S.config.locked || allLocked();
+    if (!release){ const miss = missOf(DIVS.filter(d => !divLocked(d)));
+      if (!arm(btn, miss ? `미제출 ${miss}장 · 그래도 전체 마감` : '전체 마감 확인', miss ? `아직 제출되지 않은 심사표가 ${miss}장 있습니다. 미제출 팀은 수상에서 빠집니다. 그래도 마감하려면 한 번 더 누르세요` : '한 번 더 누르면 모든 학부를 마감합니다')) return; }
+    else if (!arm(btn, '전체 해제 확인', '한 번 더 누르면 모든 학부의 마감을 해제합니다')) return;
+    try { await S.db.doc('config/main').update(release ? {locked: false, lockedDivs: []} : {locked: true}); toast(release ? '모든 학부의 마감을 해제했습니다' : '전체 심사를 마감했습니다'); } catch(e){ toast('바꾸지 못했습니다'); } };
   const readQuota = () => { const quota = {}; DIVS.forEach((div,di) => { quota[div] = {}; ALL_AWARDS.forEach((a,ai) => { quota[div][a] = Math.max(0, parseInt($('#q'+di+'_'+ai).value,10) || 0); }); }); return quota; };
   const checkQuota = () => {
     const quota = readQuota(); const manual = DIVS.some(d => quota[d]['대상'] > 0); let bad = 0; let tops = 0;
@@ -992,7 +1017,7 @@ function renderSetup(app){
   /* 위원별 점수 초기화: 첫 클릭은 확인 대기(5초), 두 번째 클릭에 삭제 */
   app.querySelectorAll('[data-reset]').forEach(btn => { let armT = null; const label = btn.textContent;
     btn.onclick = async () => {
-      if (S.config.locked){ toast('심사가 마감되어 초기화할 수 없습니다'); return; }
+      if (btn.dataset.reset === '*' ? DIVS.some(divLocked) : divLocked((judge(btn.dataset.reset)||{}).division)){ toast('마감된 학부의 점수는 초기화할 수 없습니다'); return; }
       const jid = btn.dataset.reset; const keys = Object.keys(S.scores).filter(k => jid === '*' || k.startsWith(jid + '__'));
       if (!keys.length){ toast('지울 점수가 없습니다'); return; }
       const who = jid === '*' ? '전체 위원' : (judge(jid) ? judge(jid).name + ' 위원' : jid);
