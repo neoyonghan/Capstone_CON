@@ -132,6 +132,20 @@ td input[type=text]{min-width:140px;padding:6px 8px}
 .hero{margin:0 0 26px;border-radius:16px;overflow:hidden;background:#0b2a6b;box-shadow:0 6px 24px rgba(10,30,80,.18)}
 .hero img{display:block;width:100%;height:auto}
 @media (max-width:600px){.hero{border-radius:10px;margin-bottom:18px}}
+.sheet-top{display:flex;align-items:stretch;border-bottom:1px solid var(--line)}
+.sheet-top .sheet-head{flex:1;border-bottom:0}
+.poster{flex:none;width:168px;margin:12px 14px 12px 0;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--sunk);cursor:zoom-in;position:relative;align-self:flex-start;aspect-ratio:1715/2200}
+.poster img{display:block;width:100%;height:100%;object-fit:cover;object-position:top}
+.poster .zoomhint{position:absolute;right:6px;bottom:6px;background:rgba(11,42,91,.86);color:#fff;font-size:12px;font-weight:600;padding:3px 8px;border-radius:999px}
+.poster.missing{display:none}
+.lightbox{position:fixed;inset:0;z-index:50;background:rgba(6,12,24,.92);display:flex;flex-direction:column}
+.lightbox .lb-bar{display:flex;align-items:center;gap:8px;padding:10px max(16px,env(safe-area-inset-left,0px));padding-top:max(10px,env(safe-area-inset-top,0px));color:#fff}
+.lightbox .lb-bar b{flex:1;min-width:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lightbox .lb-bar button{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:999px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer;min-height:40px}
+.lightbox .lb-scroll{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y pinch-zoom}
+.lightbox .lb-scroll img{display:block;margin:0 auto;height:100%;width:auto;max-width:none;cursor:zoom-in}
+.lightbox.zoomed .lb-scroll img{height:auto;cursor:zoom-out}
+@media (max-width:560px){.sheet-top{flex-direction:column-reverse}.poster{width:auto;margin:12px 16px 0;aspect-ratio:auto;max-height:220px}.poster img{height:220px}}
 </style>
 
 <header class="top">
@@ -178,6 +192,27 @@ function teamsOf(div){ return Object.values(S.teams).filter(t => t.division === 
 function scoreKey(jid, booth){ return jid + '__' + booth; }
 function scoreOf(jid, booth){ return S.scores[scoreKey(jid, booth)]; }
 function teamLabel(t){ return t.team || ('부스 ' + t.booth); }
+function posterSrc(t){ const n = parseInt(String(t && t.booth || '').replace(/\D/g,''), 10); return n >= 1 && n <= 999 ? 'posters/' + String(n).padStart(2,'0') + '.jpg' : ''; }
+function posterThumb(t){ const src = posterSrc(t); if (!src) return '';
+  return `<button type="button" class="poster" data-poster="${esc(src)}" data-ptitle="${esc((t.booth||'') + '. ' + (t.work||'') + ' · ' + teamLabel(t))}" aria-label="작품 설명 이미지 크게 보기"><img src="${esc(src)}" alt="${esc(t.work||'')} 작품 설명" loading="lazy" decoding="async" onerror="this.parentNode.classList.add('missing')"><span class="zoomhint">크게 보기</span></button>`; }
+function openPoster(src, title){
+  closePoster();
+  const lb = document.createElement('div'); lb.className = 'lightbox'; lb.id = 'lightbox'; lb.setAttribute('role','dialog'); lb.setAttribute('aria-modal','true');
+  lb.innerHTML = `<div class="lb-bar"><b></b><button type="button" data-lb="zoom">확대</button><button type="button" data-lb="close">닫기 ✕</button></div><div class="lb-scroll"><img alt=""></div>`;
+  lb.querySelector('b').textContent = title || '작품 설명';
+  const img = lb.querySelector('img'); img.src = src; img.alt = (title || '') + ' 작품 설명';
+  const toggle = (ev) => { const sc = lb.querySelector('.lb-scroll'); const z = !lb.classList.contains('zoomed');
+    const r = img.getBoundingClientRect(); const fx = ev && ev.clientX != null ? (ev.clientX - r.left) / r.width : .5; const fy = ev && ev.clientY != null ? (ev.clientY - r.top) / r.height : 0;
+    lb.classList.toggle('zoomed', z); lb.querySelector('[data-lb=zoom]').textContent = z ? '화면 맞춤' : '확대';
+    if (z) requestAnimationFrame(() => { sc.scrollLeft = Math.max(0, img.offsetWidth * fx - sc.clientWidth / 2); sc.scrollTop = Math.max(0, img.offsetHeight * fy - sc.clientHeight / 2); }); };
+  img.addEventListener('click', toggle);
+  lb.addEventListener('click', (e) => { const b = e.target.closest('[data-lb]'); if (!b) { if (e.target.classList.contains('lb-scroll')) closePoster(); return; }
+    if (b.dataset.lb === 'close') closePoster(); else toggle(); });
+  document.body.appendChild(lb); document.body.style.overflow = 'hidden'; lb.querySelector('[data-lb=close]').focus();
+}
+function closePoster(){ const lb = document.getElementById('lightbox'); if (lb) { lb.remove(); document.body.style.overflow = ''; } }
+document.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('[data-poster]'); if (b) { e.preventDefault(); openPoster(b.dataset.poster, b.dataset.ptitle); } });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePoster(); });
 /* 발표 예정 시각(제안): 학부별 부스 순서, 10:00 시작, 팀당 발표 5분 + 질의 3분 + 이동 2분, 12:00~13:00 점심 */
 function slotOf(t){
   const cfg = S.config || {}; const step = Number(cfg.slotMin) || 10;
@@ -345,13 +380,13 @@ function renderSheet(app, j, t, locked){
       ${prev ? `<span class="chip ok">제출됨 · ${esc(fmtTime(prev.updatedAt))}</span>` : ''}</div>
     ${locked ? '<div class="banner">심사가 마감되어 점수를 고칠 수 없습니다.</div>' : ''}
     <form class="panel" id="sheet" autocomplete="off">
-      <dl class="sheet-head">
+      <div class="sheet-top"><dl class="sheet-head">
         <dt>작품명</dt><dd>${esc(t.work || '—')}</dd>
         <dt>팀명</dt><dd>${esc(teamLabel(t))}</dd>
         <dt>학과 · 부스</dt><dd>${esc(t.dept)} · <span class="num">${esc(t.booth)}</span></dd>
         <dt>지도교수 · 인원</dt><dd>${esc(t.advisor || '—')} · ${esc(t.members || '—')}명 · 발표 예정 <span class="num">${slotOf(t)}</span></dd>
         <dt>평가위원</dt><dd>${esc(j.name)} (${esc(j.org||'')})</dd>
-      </dl>
+      </dl>${posterThumb(t)}</div>
       <div class="legend"><span><i style="background:var(--t10)"></i>매우우수 10</span><span><i style="background:var(--t9)"></i>우수 9–8</span><span><i style="background:var(--t7)"></i>보통 7–5</span><span>항목당 10점, 계 100점</span></div>
       ${areaHtml}
       <div class="memo">
